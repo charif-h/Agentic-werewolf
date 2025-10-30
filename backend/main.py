@@ -70,8 +70,9 @@ async def get_providers():
     try:
         providers = AIProvider.get_available_providers()
         return {"providers": providers}
-    except Exception as e:
-        return {"providers": [], "error": str(e)}
+    except Exception:
+        # Don't expose internal error details
+        return {"providers": [], "error": "Failed to load AI providers"}
 
 
 @app.post("/api/game/create")
@@ -117,8 +118,9 @@ async def create_game(num_players: int = 24, ai_provider: Optional[str] = None):
                 "phase": state.phase.value
             }
         })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        # Log the error internally but don't expose details to client
+        raise HTTPException(status_code=500, detail="Failed to create game")
 
 
 @app.get("/api/game/state")
@@ -166,8 +168,9 @@ async def start_game():
         })
         
         return {"status": "success", "announcement": announcement}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        # Log the error internally but don't expose details to client
+        raise HTTPException(status_code=500, detail="Failed to start game")
 
 
 @app.post("/api/game/next-phase")
@@ -227,8 +230,9 @@ async def next_phase():
         })
         
         return {"status": "success", "data": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        # Log the error internally but don't expose details to client
+        raise HTTPException(status_code=500, detail="Failed to progress to next phase")
 
 
 @app.get("/api/players")
