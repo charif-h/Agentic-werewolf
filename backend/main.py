@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 import json
 import asyncio
 from datetime import datetime
+from pydantic import BaseModel
 
 from backend.game.game_logic import WerewolfGame
 from backend.models.game_models import GameState, Message, PlayerProfile
@@ -75,19 +76,28 @@ async def get_providers():
         return {"providers": [], "error": "Failed to load AI providers"}
 
 
+class GameRequest(BaseModel):
+    """Request model for creating a game"""
+    num_players: int = 8  # Default to 8 players to reduce API calls
+    ai_provider: Optional[str] = None
+
+
 @app.post("/api/game/create")
-async def create_game(num_players: int = 24, ai_provider: Optional[str] = None):
+async def create_game(request: GameRequest):
     """
     Create a new game
     
     Args:
-        num_players: Number of players (default 24)
-        ai_provider: AI provider to use (openai, gemini, mistral)
+        request: Game creation request with num_players and ai_provider
     """
     global game
     
     try:
-        game = WerewolfGame(num_players=num_players, ai_provider=ai_provider)
+        # Limit players to reduce API calls and avoid rate limits
+        max_players = 12  # Maximum 12 players to keep API usage manageable
+        num_players = min(request.num_players, max_players)
+        
+        game = WerewolfGame(num_players=num_players, ai_provider=request.ai_provider)
         state = game.setup_game()
         
         # Broadcast game creation
@@ -118,9 +128,12 @@ async def create_game(num_players: int = 24, ai_provider: Optional[str] = None):
                 "phase": state.phase.value
             }
         })
-    except Exception:
-        # Log the error internally but don't expose details to client
-        raise HTTPException(status_code=500, detail="Failed to create game")
+    except Exception as e:
+        # Log the actual error for debugging
+        print(f"Error in create_game: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to create game: {str(e)}")
 
 
 @app.get("/api/game/state")
@@ -168,9 +181,12 @@ async def start_game():
         })
         
         return {"status": "success", "announcement": announcement}
-    except Exception:
-        # Log the error internally but don't expose details to client
-        raise HTTPException(status_code=500, detail="Failed to start game")
+    except Exception as e:
+        # Log the actual error for debugging
+        print(f"Error in start_game: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to start game: {str(e)}")
 
 
 @app.post("/api/game/next-phase")
@@ -194,9 +210,9 @@ async def next_phase():
             }
         
         elif current_phase.value == "day":
-            # Start discussion
+            # Start discussion (dynamic multi-round discussion)
             game.state.phase = "discussion"
-            messages = game.conduct_discussion(rounds=2)
+            messages = game.conduct_discussion(max_rounds=5)
             result = {
                 "phase": "discussion",
                 "messages": messages
@@ -224,15 +240,41 @@ async def next_phase():
                 result["next_phase"] = "night"
                 result["night_announcement"] = night_announcement
         
+        elif current_phase.value == "voting":
+            # After voting, check win condition and continue
+            winner = game.check_win_condition()
+            if winner:
+                end_announcement = game.end_game(winner)
+                result = {
+                    "phase": "ended",
+                    "game_ended": True,
+                    "winner": winner,
+                    "end_announcement": end_announcement
+                }
+            else:
+                # Start next night
+                night_announcement = game.start_night()
+                result = {
+                    "phase": "night",
+                    "night_announcement": night_announcement
+                }
+        
+        else:
+            # Handle unexpected phases
+            result = {"error": f"Unknown phase: {current_phase.value}"}
+        
         await manager.broadcast({
             "type": "phase_change",
             "data": result
         })
         
         return {"status": "success", "data": result}
-    except Exception:
-        # Log the error internally but don't expose details to client
-        raise HTTPException(status_code=500, detail="Failed to progress to next phase")
+    except Exception as e:
+        # Log the actual error for debugging
+        print(f"Error in next_phase: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to progress to next phase: {str(e)}")
 
 
 @app.get("/api/players")
@@ -250,6 +292,7 @@ async def get_players():
                 "age": p.age,
                 "personality": p.personality.value,
                 "personality_description": p.get_personality_description(),
+                "role": p.role.value if p.role else None,
                 "status": p.status.value
             }
             for p in game.state.players

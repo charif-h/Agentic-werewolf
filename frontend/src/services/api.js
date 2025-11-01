@@ -17,9 +17,10 @@ export const gameApi = {
   },
 
   // Create a new game
-  createGame: async (numPlayers = 24, aiProvider = null) => {
-    const response = await api.post('/api/game/create', null, {
-      params: { num_players: numPlayers, ai_provider: aiProvider }
+  createGame: async (numPlayers = 8, aiProvider = null) => {
+    const response = await api.post('/api/game/create', {
+      num_players: numPlayers,
+      ai_provider: aiProvider
     });
     return response.data;
   },

@@ -45,7 +45,7 @@ class AIProvider:
             if not api_key:
                 raise ValueError("GOOGLE_API_KEY not found in environment")
             return ChatGoogleGenerativeAI(
-                model="gemini-pro",
+                model="gemini-2.5-pro",
                 temperature=temperature,
                 google_api_key=api_key
             )
@@ -55,7 +55,7 @@ class AIProvider:
             if not api_key:
                 raise ValueError("MISTRAL_API_KEY not found in environment")
             return ChatMistralAI(
-                model="mistral-medium",
+                model="mistral-small-latest",
                 temperature=temperature,
                 mistral_api_key=api_key
             )

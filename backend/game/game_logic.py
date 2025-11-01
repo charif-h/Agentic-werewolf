@@ -4,7 +4,7 @@ Game Logic for Werewolves of Millers Hollow
 import random
 from typing import List, Dict, Optional, Tuple
 from backend.models.game_models import (
-    PlayerProfile, GameState, GamePhase, Role, PlayerStatus
+    PlayerProfile, GameState, GamePhase, Role, PlayerStatus, Discussion, Message
 )
 from backend.agents.profile_generator import generate_all_players
 from backend.agents.player_agent import PlayerAgent
@@ -112,6 +112,14 @@ class WerewolfGame:
         announcement = self.game_master.announce_night(self.state.day_number)
         self.state.game_log.append(f"[GAME MASTER] {announcement}")
         
+        # Announce werewolves awakening
+        alive_werewolves = [p for p in self.state.players 
+                           if p.status == PlayerStatus.ALIVE and p.role == Role.WEREWOLF]
+        if alive_werewolves:
+            werewolf_names = [w.name for w in alive_werewolves]
+            werewolf_announcement = self.game_master.announce_werewolf_awakening(werewolf_names)
+            self.state.game_log.append(f"[GAME MASTER] {werewolf_announcement}")
+        
         return announcement
     
     def process_night_actions(self) -> Dict[str, any]:
@@ -134,13 +142,23 @@ class WerewolfGame:
         # Werewolves choose victim
         werewolves = [p for p in alive_players if p.role == Role.WEREWOLF]
         if werewolves:
-            # Simplified: first werewolf chooses (in full implementation, they'd coordinate)
-            victim_name = self.player_agents[werewolves[0].id].night_action(
-                self._get_game_state_dict()
-            )
-            victim = self._find_player_by_name(victim_name)
-            if victim:
-                results['killed'] = victim.id
+            # Get non-werewolf targets (werewolves cannot target each other)
+            non_werewolf_targets = [p for p in alive_players if p.role != Role.WEREWOLF]
+            if non_werewolf_targets:
+                # Create modified game state with only valid targets for werewolves
+                werewolf_game_state = self._get_game_state_dict()
+                werewolf_game_state['valid_targets'] = [p.name for p in non_werewolf_targets]
+                
+                # Simplified: first werewolf chooses (in full implementation, they'd coordinate)
+                victim_name = self.player_agents[werewolves[0].id].night_action(werewolf_game_state)
+                victim = self._find_player_by_name(victim_name)
+                
+                # Ensure the victim is not a werewolf
+                if victim and victim.role != Role.WEREWOLF:
+                    results['killed'] = victim.id
+                    # Announce werewolves' decision
+                    werewolf_decision = self.game_master.announce_werewolf_decision(victim.name)
+                    self.state.game_log.append(f"[GAME MASTER] {werewolf_decision}")
         
         # Guard protects someone
         guards = [p for p in alive_players if p.role == Role.GUARD]
@@ -213,12 +231,13 @@ class WerewolfGame:
         
         return announcement
     
-    def conduct_discussion(self, rounds: int = 3) -> List[str]:
+    def conduct_discussion(self, max_rounds: int = 5) -> List[str]:
         """
-        Conduct discussion phase where players share thoughts
+        Conduct dynamic discussion phase where players can respond to each other
+        Each time someone speaks, all players get a chance to respond
         
         Args:
-            rounds: Number of discussion rounds
+            max_rounds: Maximum number of discussion rounds (default: 5)
             
         Returns:
             List of discussion messages
@@ -227,22 +246,108 @@ class WerewolfGame:
         messages = []
         
         alive_players = [p for p in self.state.players if p.status == PlayerStatus.ALIVE]
+        alive_names = [p.name for p in alive_players]
         
-        for round_num in range(rounds):
-            topic = f"Round {round_num + 1}: Share your suspicions or defend yourself."
+        # Create main discussion
+        discussion = Discussion(
+            round_number=1,
+            topic="Dynamic discussion - players can respond to each other",
+            messages=[]
+        )
+        
+        import time
+        import random
+        
+        for discussion_round in range(1, max_rounds + 1):
+            round_had_new_speech = False
             
-            for player in alive_players:
-                agent = self.player_agents[player.id]
-                response = agent.discuss(self._get_game_state_dict(), topic)
-                message = f"[{player.name}] {response}"
-                messages.append(message)
-                self.state.game_log.append(message)
+            # Shuffle player order each round for fairness
+            shuffled_players = alive_players.copy()
+            random.shuffle(shuffled_players)
+            
+            # Build current conversation context for this round
+            current_conversation = ""
+            if discussion.messages:
+                current_conversation = "\n".join([f"[{msg.sender}] {msg.content}" for msg in discussion.messages])
+            
+            for player in shuffled_players:
+                try:
+                    agent = self.player_agents[player.id]
+                    
+                    # Give each player the updated conversation to consider responding
+                    time.sleep(0.3)  # Shorter delay for more dynamic interaction
+                    comment = agent.discuss(current_conversation, alive_names)
+                    
+                    # Filter out "no comment" responses
+                    if comment and comment.strip() and comment.strip().lower() != "no comment":
+                        message_text = f"[{player.name}] {comment}"
+                        messages.append(message_text)
+                        self.state.game_log.append(message_text)
+                        round_had_new_speech = True
+                        
+                        # Add to structured discussion
+                        from datetime import datetime
+                        message = Message(
+                            sender=player.name,
+                            content=comment,
+                            timestamp=datetime.now().isoformat(),
+                            message_type="dynamic_comment"
+                        )
+                        discussion.messages.append(message)
+                        
+                        # Update conversation immediately so next players see this comment
+                        current_conversation = "\n".join([f"[{msg.sender}] {msg.content}" for msg in discussion.messages])
+                        
+                        print(f"Round {discussion_round}: {player.name} spoke, conversation updated")
+                        
+                except Exception as e:
+                    error_msg = str(e).lower()
+                    if "rate limit" in error_msg or "429" in error_msg:
+                        print(f"Rate limit hit for player {player.name}, they stay silent this round")
+                        time.sleep(0.8)  # Extra delay on rate limit
+                        continue
+                    else:
+                        print(f"Error with player {player.name}: {e}")
+                        continue
+            
+            # If no one spoke this round, check if we should end
+            if not round_had_new_speech:
+                if discussion_round >= 2:  # Minimum 2 rounds
+                    silence_announcement = "The discussion has concluded. Time to vote."
+                    self.state.game_log.append(f"[GAME MASTER] {silence_announcement}")
+                    break
+                    
+            # Check if Game Master wants to continue discussion
+            elif discussion_round >= 3:  # After round 3, GM can decide to end
+                try:
+                    conversation_so_far = "\n".join([f"[{msg.sender}] {msg.content}" for msg in discussion.messages])
+                    should_continue = self.game_master.should_continue_discussion(
+                        conversation_so_far, 
+                        discussion_round,
+                        len(alive_players)
+                    )
+                    
+                    if not should_continue:
+                        end_announcement = self.game_master.announce_discussion_end()
+                        self.state.game_log.append(f"[GAME MASTER] {end_announcement}")
+                        break
+                        
+                except Exception as e:
+                    print(f"GM decision failed: {e}")
+                    # Continue to next round on GM error
+            
+            # Shorter delay between rounds for more dynamic feel
+            time.sleep(0.5)
+        
+        # Save discussion to game state
+        if discussion.messages:
+            self.state.discussions.append(discussion)
         
         return messages
     
     def conduct_vote(self) -> Tuple[Optional[PlayerProfile], Dict[str, int]]:
         """
-        Conduct voting to eliminate a player
+        Conduct independent voting where each player makes their own strategic decision
         
         Returns:
             Tuple of (eliminated player, vote counts)
@@ -254,19 +359,74 @@ class WerewolfGame:
         
         votes: Dict[str, List[str]] = {name: [] for name in candidate_names}
         
-        # Each player votes
-        for player in alive_players:
-            agent = self.player_agents[player.id]
-            vote_target = agent.vote(self._get_game_state_dict(), candidate_names)
-            
-            if vote_target in candidate_names:
-                votes[vote_target].append(player.name)
-                self.state.game_log.append(f"[VOTE] {player.name} votes for {vote_target}")
+        # Build complete conversation context for voting
+        full_conversation = ""
+        if self.state.discussions:
+            latest_discussion = self.state.discussions[-1]
+            if latest_discussion.messages:
+                full_conversation = "\n".join([f"[{msg.sender}] {msg.content}" for msg in latest_discussion.messages])
+            else:
+                full_conversation = "No one spoke during the discussion - complete silence."
+        else:
+            full_conversation = "No discussion took place this phase."
         
-        # Count votes
+        # Each player makes independent voting decision
+        import time
+        import random
+        
+        # Shuffle voting order to prevent influence
+        shuffled_voters = alive_players.copy()
+        random.shuffle(shuffled_voters)
+        
+        for player in shuffled_voters:
+            try:
+                time.sleep(0.5)  # Rate limit protection
+                
+                agent = self.player_agents[player.id]
+                vote_target = agent.vote(full_conversation, candidate_names)
+                
+                # Validate vote target
+                if vote_target in candidate_names:
+                    target_player = self._find_player_by_name(vote_target)
+                    if target_player and target_player.status == PlayerStatus.ALIVE:
+                        votes[vote_target].append(player.name)
+                        self.state.game_log.append(f"[VOTE] {player.name} votes to eliminate {vote_target}")
+                    else:
+                        # Invalid target, use fallback
+                        fallback_target = candidate_names[0] if candidate_names else None
+                        if fallback_target:
+                            votes[fallback_target].append(player.name)
+                            self.state.game_log.append(f"[VOTE] {player.name} votes for {fallback_target} (invalid target corrected)")
+                else:
+                    # Vote parsing failed, use fallback
+                    fallback_target = candidate_names[0] if candidate_names else None
+                    if fallback_target:
+                        votes[fallback_target].append(player.name)
+                        self.state.game_log.append(f"[VOTE] {player.name} votes for {fallback_target} (vote parsing failed)")
+                        
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "rate limit" in error_msg or "429" in error_msg:
+                    print(f"Rate limit hit during voting for {player.name}")
+                    # Use strategic fallback vote during rate limits
+                    if candidate_names:
+                        # Prefer to vote for someone other than self
+                        other_candidates = [c for c in candidate_names if c != player.name]
+                        fallback_target = random.choice(other_candidates) if other_candidates else candidate_names[0]
+                        votes[fallback_target].append(player.name)
+                        self.state.game_log.append(f"[VOTE] {player.name} votes for {fallback_target} (rate limited)")
+                    time.sleep(1)  # Extra delay after rate limit
+                else:
+                    print(f"Voting error for {player.name}: {e}")
+                    # Error fallback
+                    if candidate_names:
+                        fallback_target = candidate_names[0]
+                        votes[fallback_target].append(player.name)
+                        self.state.game_log.append(f"[VOTE] {player.name} votes for {fallback_target} (error fallback)")
+        
+        # Count votes and determine elimination
         vote_counts = {name: len(voters) for name, voters in votes.items()}
         
-        # Find player with most votes
         if vote_counts:
             max_votes = max(vote_counts.values())
             top_voted = [name for name, count in vote_counts.items() if count == max_votes]
@@ -330,6 +490,12 @@ class WerewolfGame:
     
     def _get_game_state_dict(self) -> Dict[str, any]:
         """Convert game state to dictionary for agents"""
+        # Get recent discussion history
+        discussion_history = []
+        for discussion in self.state.discussions[-3:]:  # Last 3 discussions
+            for message in discussion.messages:
+                discussion_history.append(f"[{message.sender}] {message.content}")
+        
         return {
             'phase': self.state.phase.value,
             'day_number': self.state.day_number,
@@ -341,7 +507,16 @@ class WerewolfGame:
                 }
                 for p in self.state.players
             ],
-            'recent_events': self.state.game_log[-3:] if self.state.game_log else []
+            'recent_events': self.state.game_log[-3:] if self.state.game_log else [],
+            'discussion_history': discussion_history,
+            'all_discussions': [
+                {
+                    'round': d.round_number,
+                    'topic': d.topic,
+                    'messages': [{'sender': m.sender, 'content': m.content} for m in d.messages]
+                }
+                for d in self.state.discussions
+            ]
         }
     
     def _find_player_by_name(self, name: str) -> Optional[PlayerProfile]:

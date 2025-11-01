@@ -29,7 +29,6 @@ class PersonalityType(str, Enum):
 class Sex(str, Enum):
     MALE = "male"
     FEMALE = "female"
-    NON_BINARY = "non-binary"
 
 
 class Role(str, Enum):
@@ -93,6 +92,21 @@ class PlayerProfile(BaseModel):
         return descriptions.get(self.personality, "Unique personality")
 
 
+class Message(BaseModel):
+    """Message in the game"""
+    sender: str
+    content: str
+    timestamp: str
+    message_type: str = "chat"  # chat, action, system
+
+
+class Discussion(BaseModel):
+    """Discussion round with messages"""
+    round_number: int
+    topic: str
+    messages: List[Message] = []
+
+
 class GameState(BaseModel):
     """Current state of the game"""
     phase: GamePhase = GamePhase.SETUP
@@ -102,11 +116,4 @@ class GameState(BaseModel):
     night_actions: dict = {}
     voting_results: dict = {}
     game_log: List[str] = []
-    
-    
-class Message(BaseModel):
-    """Message in the game"""
-    sender: str
-    content: str
-    timestamp: str
-    message_type: str = "chat"  # chat, action, system
+    discussions: List[Discussion] = []  # Store all discussions for context
