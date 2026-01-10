@@ -100,6 +100,14 @@ class Message(BaseModel):
     message_type: str = "chat"  # chat, action, system
 
 
+class ProposedMessage(BaseModel):
+    """Proposed message with motivation score for hub selection"""
+    sender: str
+    content: str
+    motivation_score: int = Field(ge=1, le=10)  # Score from 1 to 10
+    timestamp: str
+
+
 class Discussion(BaseModel):
     """Discussion round with messages"""
     round_number: int

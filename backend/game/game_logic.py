@@ -9,6 +9,7 @@ from backend.models.game_models import (
 from backend.agents.profile_generator import generate_all_players
 from backend.agents.player_agent import PlayerAgent
 from backend.agents.game_master_agent import GameMasterAgent
+from backend.game.conversation_hub import ConversationHub
 
 
 class WerewolfGame:
@@ -233,8 +234,8 @@ class WerewolfGame:
     
     def conduct_discussion(self, max_rounds: int = 5) -> List[str]:
         """
-        Conduct dynamic discussion phase where players can respond to each other
-        Each time someone speaks, all players get a chance to respond
+        Conduct dynamic discussion phase using conversation hub with motivation scores
+        Players read context, decide to respond with motivation scores, hub selects highest
         
         Args:
             max_rounds: Maximum number of discussion rounds (default: 5)
@@ -251,54 +252,53 @@ class WerewolfGame:
         # Create main discussion
         discussion = Discussion(
             round_number=1,
-            topic="Dynamic discussion - players can respond to each other",
+            topic="Hub-based discussion with motivation scoring",
             messages=[]
         )
         
         import time
         import random
         
+        # Track when each player last spoke
+        player_last_spoke: Dict[str, int] = {p.name: -1 for p in alive_players}
+        message_count = 0
+        
         for discussion_round in range(1, max_rounds + 1):
-            round_had_new_speech = False
+            # Build current conversation context for this round
+            current_conversation = ""
+            last_speaker = None
+            if discussion.messages:
+                current_conversation = "\n".join([f"[{msg.sender}] {msg.content}" for msg in discussion.messages])
+                last_speaker = discussion.messages[-1].sender if discussion.messages else None
             
-            # Shuffle player order each round for fairness
+            # Create hub for this round
+            hub = ConversationHub()
+            
+            # Shuffle player order for fairness
             shuffled_players = alive_players.copy()
             random.shuffle(shuffled_players)
             
-            # Build current conversation context for this round
-            current_conversation = ""
-            if discussion.messages:
-                current_conversation = "\n".join([f"[{msg.sender}] {msg.content}" for msg in discussion.messages])
-            
+            # Step 1: Each player reads context and decides if they want to respond
             for player in shuffled_players:
                 try:
                     agent = self.player_agents[player.id]
                     
-                    # Give each player the updated conversation to consider responding
-                    time.sleep(0.3)  # Shorter delay for more dynamic interaction
-                    comment = agent.discuss(current_conversation, alive_names)
+                    # Calculate messages since this player last spoke
+                    messages_since_last_spoke = message_count - player_last_spoke[player.name] - 1 if player_last_spoke[player.name] >= 0 else message_count
                     
-                    # Filter out "no comment" responses
+                    # Give each player the conversation and get their response with motivation score
+                    time.sleep(0.3)  # Rate limit protection
+                    comment, motivation_score = agent.discuss_with_motivation(
+                        current_conversation, 
+                        alive_names,
+                        last_speaker,
+                        messages_since_last_spoke
+                    )
+                    
+                    # Step 2: Player submits message to hub with motivation score
                     if comment and comment.strip() and comment.strip().lower() != "no comment":
-                        message_text = f"[{player.name}] {comment}"
-                        messages.append(message_text)
-                        self.state.game_log.append(message_text)
-                        round_had_new_speech = True
-                        
-                        # Add to structured discussion
-                        from datetime import datetime
-                        message = Message(
-                            sender=player.name,
-                            content=comment,
-                            timestamp=datetime.now().isoformat(),
-                            message_type="dynamic_comment"
-                        )
-                        discussion.messages.append(message)
-                        
-                        # Update conversation immediately so next players see this comment
-                        current_conversation = "\n".join([f"[{msg.sender}] {msg.content}" for msg in discussion.messages])
-                        
-                        print(f"Round {discussion_round}: {player.name} spoke, conversation updated")
+                        hub.submit_message(player.name, comment, motivation_score)
+                        print(f"Round {discussion_round}: {player.name} submitted message with score {motivation_score}")
                         
                 except Exception as e:
                     error_msg = str(e).lower()
@@ -310,15 +310,37 @@ class WerewolfGame:
                         print(f"Error with player {player.name}: {e}")
                         continue
             
-            # If no one spoke this round, check if we should end
-            if not round_had_new_speech:
+            # Step 3: Hub selects messages with highest motivation score(s)
+            selected_messages = hub.select_messages()
+            
+            # Step 4: Publish selected messages to the conversation
+            if selected_messages:
+                for msg in selected_messages:
+                    message_text = f"[{msg.sender}] {msg.content}"
+                    messages.append(message_text)
+                    self.state.game_log.append(message_text)
+                    discussion.messages.append(msg)
+                    
+                    # Update tracking
+                    player_last_spoke[msg.sender] = message_count
+                    message_count += 1
+                    
+                    print(f"Round {discussion_round}: Published message from {msg.sender}")
+                
+                # If multiple messages with same top score, announce that
+                if len(selected_messages) > 1:
+                    tie_announcement = f"Multiple players speak at once: {', '.join([m.sender for m in selected_messages])}"
+                    print(tie_announcement)
+            else:
+                # No one wanted to speak this round
                 if discussion_round >= 2:  # Minimum 2 rounds
                     silence_announcement = "The discussion has concluded. Time to vote."
                     self.state.game_log.append(f"[GAME MASTER] {silence_announcement}")
+                    print(f"Round {discussion_round}: No one spoke, ending discussion")
                     break
                     
             # Check if Game Master wants to continue discussion
-            elif discussion_round >= 3:  # After round 3, GM can decide to end
+            if discussion_round >= 3:  # After round 3, GM can decide to end
                 try:
                     conversation_so_far = "\n".join([f"[{msg.sender}] {msg.content}" for msg in discussion.messages])
                     should_continue = self.game_master.should_continue_discussion(
@@ -330,6 +352,7 @@ class WerewolfGame:
                     if not should_continue:
                         end_announcement = self.game_master.announce_discussion_end()
                         self.state.game_log.append(f"[GAME MASTER] {end_announcement}")
+                        print(f"Round {discussion_round}: Game Master ended discussion")
                         break
                         
                 except Exception as e:

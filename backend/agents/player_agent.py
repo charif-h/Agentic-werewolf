@@ -274,6 +274,66 @@ Do you want to respond to the current conversation?"""
             else:
                 return "no comment"  # Safe fallback
     
+    def discuss_with_motivation(self, conversation_history: str, alive_players: list[str], 
+                                last_speaker: Optional[str] = None,
+                                messages_since_last_spoke: int = 0) -> tuple[str, int]:
+        """
+        Generate a strategic comment with motivation score
+        
+        Args:
+            conversation_history: Complete conversation so far
+            alive_players: List of alive player names
+            last_speaker: Name of the last person who spoke (if any)
+            messages_since_last_spoke: Number of messages since this player last spoke
+            
+        Returns:
+            Tuple of (comment, motivation_score) where motivation_score is 1-10
+        """
+        # Build strategic context based on role
+        role_strategy = self._get_role_strategy()
+        
+        context = f"""You are {self.profile.name} in a Werewolf game discussion.
+
+CURRENT CONVERSATION:
+{conversation_history if conversation_history.strip() else "No one has spoken yet."}
+
+ALIVE PLAYERS: {', '.join(alive_players)}
+
+YOUR HIDDEN INFO: You are a {self.profile.role.value}
+{role_strategy}
+
+INSTRUCTIONS:
+- Decide if you want to respond to the current conversation
+- Keep response SHORT (1-2 sentences max)
+- NEVER mention roles directly (werewolf, villager, etc.)
+- You can respond to what others said or ask questions
+- Be subtle and natural
+- If you have nothing to add, say "no comment"
+
+Do you want to respond? If yes, what do you say?"""
+        
+        try:
+            response = self._get_llm_response(context)
+            
+            # Clean and validate response
+            response = response.strip()
+            if not response or response.lower() == "no comment":
+                return ("no comment", 0)
+            
+            # Calculate motivation score
+            motivation_score = self._calculate_motivation_score(
+                conversation_history, 
+                last_speaker,
+                messages_since_last_spoke,
+                response
+            )
+            
+            return (response, motivation_score)
+            
+        except Exception as e:
+            # Fallback based on role if API fails
+            return ("no comment", 0)
+    
     def _should_respond_to_conversation(self, conversation_history: str) -> str:
         """
         Check if player has special reasons to respond to current conversation
@@ -308,6 +368,90 @@ Do you want to respond to the current conversation?"""
             factors.append("- No special pressure to respond")
         
         return '\n'.join(factors)
+    
+    def _calculate_motivation_score(self, conversation_history: str, 
+                                    last_speaker: Optional[str],
+                                    messages_since_last_spoke: int,
+                                    proposed_response: str) -> int:
+        """
+        Calculate motivation score from 1 to 10 based on multiple factors
+        
+        Args:
+            conversation_history: Current conversation history
+            last_speaker: Name of the last person who spoke
+            messages_since_last_spoke: Number of messages since this player last spoke
+            proposed_response: The response the player wants to make
+            
+        Returns:
+            Motivation score from 1 to 10
+        """
+        score = 5  # Base score
+        
+        # Factor 2.1: Being cited/mentioned in previous message
+        if last_speaker and self.profile.name in conversation_history:
+            # Check if mentioned in the last message
+            if conversation_history:
+                lines = conversation_history.strip().split('\n')
+                if lines and self.profile.name in lines[-1]:
+                    score += 3  # High motivation if mentioned in last message
+                else:
+                    score += 1  # Lower boost if mentioned earlier
+        
+        # Factor 2.2: Uniqueness of argument
+        # Check if similar content already exists in conversation
+        if conversation_history and proposed_response:
+            # Simple keyword overlap check
+            response_words = set(proposed_response.lower().split())
+            conversation_words = set(conversation_history.lower().split())
+            
+            # Remove common words
+            common_words = {'i', 'you', 'the', 'a', 'an', 'is', 'are', 'was', 'were', 'been', 'be',
+                          'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should',
+                          'can', 'may', 'might', 'must', 'this', 'that', 'these', 'those', 'and', 'or',
+                          'but', 'not', 'no', 'yes', 'to', 'from', 'in', 'on', 'at', 'for', 'with'}
+            
+            response_keywords = response_words - common_words
+            overlap = len(response_keywords & conversation_words)
+            uniqueness_ratio = 1.0 - (overlap / max(len(response_keywords), 1))
+            
+            if uniqueness_ratio > 0.7:  # Highly unique
+                score += 2
+            elif uniqueness_ratio < 0.3:  # Already said
+                score -= 2
+        
+        # Factor 2.3: Silence duration - longer silence increases motivation
+        if messages_since_last_spoke >= 5:
+            score += 2  # Been silent for 5+ messages
+        elif messages_since_last_spoke >= 3:
+            score += 1  # Been silent for 3-4 messages
+        elif messages_since_last_spoke == 0:
+            score -= 1  # Just spoke, less motivated to speak again
+        
+        # Factor 2.4: Personality influence
+        # Extroverted personalities (E) are more motivated to speak
+        if self.profile.personality.value[0] == 'E':  # Extroverted
+            score += 1
+        elif self.profile.personality.value[0] == 'I':  # Introverted
+            score -= 1
+        
+        # Judging (J) types are more motivated in structured discussions
+        if self.profile.personality.value[3] == 'J':
+            score += 1
+        
+        # Factor 2.5: Role-based motivation
+        if self.profile.role == Role.WEREWOLF:
+            # Werewolves are less motivated to speak (stay hidden)
+            score -= 1
+        elif self.profile.role in [Role.SEER, Role.WITCH, Role.GUARD]:
+            # Special roles need to be strategic but not too quiet
+            score += 0  # Neutral
+        elif self.profile.role == Role.VILLAGER:
+            # Villagers are motivated to find werewolves
+            score += 1
+        
+        # Clamp score between 1 and 10
+        return max(1, min(10, score))
+    
     
     def vote(self, conversation_history: str, alive_players: list[str]) -> str:
         """
