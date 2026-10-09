@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     session_ttl_minutes: float = Field(120, gt=0)
 
     # --- Server -----------------------------------------------------------
+    log_level: str = "INFO"
     host: str = "0.0.0.0"
     port: int = 8000
     cors_origins: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]

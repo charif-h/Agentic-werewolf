@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import backend.main as main
+from backend.api import state
 from backend.agents.ai_provider import AIProvider
 from backend.services.sessions import SessionManager, SessionNotFound
 
@@ -94,7 +95,7 @@ def test_least_recently_used_session_is_dropped_when_full():
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(main, "sessions", SessionManager())
+    monkeypatch.setattr(state, "sessions", SessionManager())
     monkeypatch.setattr("backend.game.game_logic.time.sleep", lambda s: None)
     with patch.object(AIProvider, "get_llm", return_value=FakeLLM()):
         yield TestClient(main.app, raise_server_exceptions=False)
@@ -137,7 +138,7 @@ def test_old_global_endpoints_are_gone(client):
 
 def test_busy_game_answers_409_instead_of_running_twice(client):
     game_id = new_game(client)
-    session = main.sessions.get(game_id)
+    session = state.sessions.get(game_id)
     client.post(f"/api/games/{game_id}/start")
     session.lock.acquire()               # a phase is "running"
     try:
@@ -151,9 +152,9 @@ def test_busy_game_answers_409_instead_of_running_twice(client):
 def test_lock_is_released_after_an_error(client):
     game_id = new_game(client)
     client.post(f"/api/games/{game_id}/start")
-    with patch("backend.main.WerewolfGame.process_night_actions", side_effect=RuntimeError("x")):
+    with patch("backend.game.game_logic.WerewolfGame.process_night_actions", side_effect=RuntimeError("x")):
         assert client.post(f"/api/games/{game_id}/next-phase").status_code == 500
-    assert not main.sessions.get(game_id).lock.locked()
+    assert not state.sessions.get(game_id).lock.locked()
 
 
 def test_a_full_game_can_be_played_through_the_api(client):

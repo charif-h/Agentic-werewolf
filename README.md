@@ -14,7 +14,7 @@ Role distribution depends on player count: werewolves = max(2, n // 6); Seer fro
 
 **Roles:** Werewolf (kills at night, knows its teammates), Villager, Seer (inspects one player per night and remembers the results), Guard (protects one player per night, never the same one twice in a row), Witch (one healing and one poison potion for the whole game), Hunter (shoots someone when killed). Cupid and Little Girl were removed: they were never implemented.
 
-**Known limitations** (tracked as GitHub issues): only one werewolf decides the night kill; the API blocks while the LLM is working.
+**Known limitations** (tracked as GitHub issues): only one werewolf decides the night kill.
 
 ## Requirements
 
@@ -83,11 +83,12 @@ Each game has its own id, so several games can run at once. Idle games are remov
 | POST | `/api/games` | create a game, body `{"num_players": 8, "ai_provider": null}`; returns `game_id` |
 | GET | `/api/games/{id}` | phase, day, players, last 20 log lines |
 | POST | `/api/games/{id}/start` | start the first night |
-| POST | `/api/games/{id}/next-phase` | run the current phase and move on (409 if one is already running) |
+| POST | `/api/games/{id}/next-phase` | run the current phase and move on; waits for the result, or answers 202 at once with `?background=true` (409 if a phase is already running) |
 | GET | `/api/games/{id}/players` | player profiles |
 | DELETE | `/api/games/{id}` | delete the game |
 | GET | `/api/providers` | configured AI providers |
-| WS | `/ws/{id}` | events of one game (`phase_change`); currently also echoes messages |
+| WS | `/ws/{id}` | live events of one game: `player_spoke`, `vote_cast`, `phase_change`, `error` (messages you send are echoed) |
+| GET | `/api/health` | liveness check and number of running games |
 
 ```bash
 curl -X POST http://localhost:8000/api/games   -H "Content-Type: application/json" -d '{"num_players": 8}'
@@ -97,11 +98,13 @@ curl -X POST http://localhost:8000/api/games   -H "Content-Type: application/jso
 
 ```
 backend/
-  main.py                 FastAPI app (REST + WebSocket)
+  main.py                 FastAPI app: middleware and routers
   prompts/                prompt templates sent to the LLM (player.py)
   roles/                  one module per role (team, prompts, night action); add a role = add a file
   engine/rules.py         pure game rules (roles, night, voting, win condition): no LLM, no I/O
   game/game_logic.py      WerewolfGame: asks the agents for decisions and applies them via the engine
+  api/                    FastAPI routers (games, players, health, websocket), serializers, error handler
+  services/               sessions (several games) and the phase state machine
   game/game_master.py     template-based Game Master (no LLM)
   agents/                 player_agent, profile_generator, ai_provider
   models/game_models.py   Pydantic models and enums

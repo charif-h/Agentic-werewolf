@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import backend.main as main
+from backend.api import serializers, state
 from backend.agents.ai_provider import AIProvider
 from backend.config import Settings
 from backend.models.game_models import PlayerStatus
@@ -20,7 +21,7 @@ class FakeLLM:
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(main, "sessions", SessionManager())
+    monkeypatch.setattr(state, "sessions", SessionManager())
     monkeypatch.setattr("backend.game.game_logic.time.sleep", lambda s: None)
     with patch.object(AIProvider, "get_llm", return_value=FakeLLM()):
         yield TestClient(main.app, raise_server_exceptions=False)
@@ -37,7 +38,7 @@ def create(client, **body):
 
 
 def game_of(client):
-    return main.sessions.get(client.game_id).game
+    return state.sessions.get(client.game_id).game
 
 
 def test_roles_are_hidden_for_living_players(client):
@@ -59,7 +60,7 @@ def test_roles_of_dead_players_are_revealed(client):
 
 def test_reveal_roles_setting_shows_everything(client, monkeypatch):
     create(client, num_players=8)
-    monkeypatch.setattr(main, "get_settings", lambda: settings(reveal_roles=True))
+    monkeypatch.setattr(serializers, "get_settings", lambda: settings(reveal_roles=True))
     assert all(p["role"] for p in client.get(f"/api/games/{client.game_id}/players").json()["players"])
 
 
@@ -72,17 +73,17 @@ def test_night_results_do_not_leak_guard_or_seer_information(client):
 
 
 def test_errors_do_not_expose_internal_details(client):
-    with patch("backend.main.WerewolfGame.setup_game", side_effect=RuntimeError("secret /srv/key.py")):
+    with patch("backend.game.game_logic.WerewolfGame.setup_game", side_effect=RuntimeError("secret /srv/key.py")):
         response = create(client, num_players=8)
     assert response.status_code == 500
-    assert response.json() == {"detail": "Failed to create game"}
+    assert response.json() == {"detail": "Internal server error"}
     assert "secret" not in response.text
 
 
 def test_next_phase_error_is_generic(client):
     create(client, num_players=8)
     gid = client.game_id
-    with patch("backend.main.WerewolfGame.process_night_actions", side_effect=RuntimeError("secret")):
+    with patch("backend.game.game_logic.WerewolfGame.process_night_actions", side_effect=RuntimeError("secret")):
         client.post(f"/api/games/{gid}/start")
         response = client.post(f"/api/games/{gid}/next-phase")
     assert response.status_code == 500

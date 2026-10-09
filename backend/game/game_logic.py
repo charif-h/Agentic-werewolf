@@ -9,7 +9,7 @@ import logging
 import random
 import time
 from datetime import datetime
-from typing import List, Dict, Optional, Tuple
+from typing import Callable, List, Dict, Optional, Tuple
 from backend.config import get_settings
 from backend.engine import rules
 from backend.roles import WEREWOLVES, get_handler, night_handlers
@@ -41,6 +41,18 @@ class WerewolfGame:
         self.state = GameState()
         self.player_agents: Dict[str, PlayerAgent] = {}
         self.game_master = GameMaster()
+        # Optional callback(event_type, data) for live progress (player_spoke, vote_cast);
+        # it is called from whatever thread plays the phase
+        self.on_event: Optional[Callable[[str, dict], None]] = None
+
+    def _emit(self, event_type: str, data: dict) -> None:
+        """Report progress to the listener, if any (a failing listener never stops the game)"""
+        callback = getattr(self, "on_event", None)
+        if callback:
+            try:
+                callback(event_type, data)
+            except Exception as e:
+                logger.warning("Event listener failed: %s", e)
 
     def setup_game(self) -> GameState:
         """
@@ -282,6 +294,7 @@ class WerewolfGame:
                         messages.append(message_text)
                         self.state.game_log.append(message_text)
                         round_speech_count += 1
+                        self._emit("player_spoke", {"sender": player.name, "content": comment})
 
                         # Add to structured discussion
                         message = Message(
@@ -361,6 +374,7 @@ class WerewolfGame:
                 if target and target.name in candidate_names and target.name != player.name:
                     votes[player.name] = target.name
                     self.state.game_log.append(f"[VOTE] {player.name} votes to eliminate {target.name}")
+                    self._emit("vote_cast", {"voter": player.name, "target": target.name})
                 else:
                     reason = "invalid target corrected"
             except Exception as e:
@@ -378,6 +392,7 @@ class WerewolfGame:
                 if target_name:
                     votes[player.name] = target_name
                     self.state.game_log.append(f"[VOTE] {player.name} votes for {target_name} ({reason})")
+                    self._emit("vote_cast", {"voter": player.name, "target": target_name})
 
         eliminated, vote_counts = rules.resolve_vote(self.state, votes)
         if eliminated:
