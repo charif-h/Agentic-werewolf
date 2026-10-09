@@ -44,7 +44,7 @@ class PlayerAgent:
 
     def _prepare_messages(self, system_prompt: str, user_message: str) -> list:
         """
-        Prepare messages for LLM ensuring proper conversation format for Mistral
+        Prepare messages for LLM ensuring a proper alternating conversation format
 
         Args:
             system_prompt: System prompt
@@ -101,23 +101,13 @@ class PlayerAgent:
 
         messages = self._prepare_messages(system_prompt, game_context)
 
-        try:
-            response = self.llm.generate(messages)
+        response = self.llm.generate(messages)
 
-            # Store in memory as a conversation pair
-            self.memory.append(Message(USER, game_context))
-            self.memory.append(Message(ASSISTANT, response))
+        # Store in memory as a conversation pair
+        self.memory.append(Message(USER, game_context))
+        self.memory.append(Message(ASSISTANT, response))
 
-            return response
-        except Exception as e:
-            # Handle rate limit and other API errors
-            error_msg = str(e).lower()
-            if "rate limit" in error_msg or "429" in error_msg:
-                # Default in-character reply for rate limit errors
-                return self.handler.rate_limit_reply
-            else:
-                # For other errors, re-raise
-                raise e
+        return response
 
     def night_action(self, game_state: Dict[str, Any]) -> Optional[str]:
         """

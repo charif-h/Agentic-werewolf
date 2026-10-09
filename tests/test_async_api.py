@@ -36,7 +36,6 @@ class BlockingLLM:
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr(state, "sessions", SessionManager())
-    monkeypatch.setattr("backend.game.game_logic.time.sleep", lambda s: None)
     with patch("backend.game.game_logic.create_llm_client", return_value=talkative_llm()):
         # the context manager keeps ONE event loop for all requests, like a real server
         with TestClient(main.app) as test_client:

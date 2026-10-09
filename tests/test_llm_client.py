@@ -1,14 +1,14 @@
-"""The LLMClient interface, the fake client and the LangChain adapter."""
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+"""The LLMClient interface, the fake client and the Ollama client."""
+import json
+from unittest.mock import patch
 
+import httpx
 import pytest
 
 from backend.agents.player_agent import PlayerAgent
 from backend.game.game_logic import WerewolfGame
 from backend.llm import ASSISTANT, SYSTEM, USER, FakeLLMClient, LLMClient, LLMError, Message
-from backend.llm.factory import create_llm_client
-from backend.llm.langchain_client import LangChainClient
+from backend.llm.ollama_client import OllamaClient
 from backend.models.game_models import PersonalityType, PlayerProfile, Role, Sex
 
 HELLO = [Message(SYSTEM, "be brief"), Message(USER, "hi")]
@@ -16,7 +16,6 @@ HELLO = [Message(SYSTEM, "be brief"), Message(USER, "hi")]
 
 def test_fake_client_satisfies_the_protocol():
     assert isinstance(FakeLLMClient(), LLMClient)
-    assert isinstance(LangChainClient(MagicMock()), LLMClient)
 
 
 def test_messages_are_immutable_value_objects():
@@ -43,28 +42,99 @@ def test_fake_client_can_fail_and_records_calls():
     assert failing.last_messages == HELLO
 
 
-def test_langchain_adapter_converts_messages_and_returns_text():
-    chat = MagicMock()
-    chat.invoke.return_value = SimpleNamespace(content="hello")
-    answer = LangChainClient(chat).generate(HELLO + [Message(ASSISTANT, "ok"), Message(USER, "more")])
-    assert answer == "hello"
-    sent = chat.invoke.call_args[0][0]
-    assert [type(m).__name__ for m in sent] == ["SystemMessage", "HumanMessage", "AIMessage", "HumanMessage"]
-    assert [m.content for m in sent] == ["be brief", "hi", "ok", "more"]
+def make_ollama(handler, **options):
+    return OllamaClient("http://ollama.test:11434/", "gemma3:4b",
+                        transport=httpx.MockTransport(handler), **options)
 
 
-def test_langchain_adapter_wraps_errors_keeping_the_text():
-    chat = MagicMock()
-    chat.invoke.side_effect = RuntimeError("429 rate limit exceeded")
-    with pytest.raises(LLMError, match="rate limit"):
-        LangChainClient(chat).generate(HELLO)
+def ok(content="hello"):
+    return httpx.Response(200, json={"message": {"role": "assistant", "content": content}})
 
 
-def test_factory_builds_a_langchain_client():
-    with patch("backend.llm.factory.AIProvider.get_llm", return_value=MagicMock()) as get_llm:
-        client = create_llm_client("mistral")
-    get_llm.assert_called_once_with(provider="mistral")
-    assert isinstance(client, LangChainClient)
+def test_ollama_sends_a_chat_request_and_returns_the_text():
+    seen = {}
+
+    def handler(request):
+        seen["url"] = str(request.url)
+        seen["body"] = json.loads(request.content)
+        return ok("salut")
+
+    client = make_ollama(handler, temperature=0.5, max_tokens=64, num_ctx=2048, keep_alive="10m")
+    assert client.generate(HELLO + [Message(ASSISTANT, "ok"), Message(USER, "more")]) == "salut"
+    assert seen["url"] == "http://ollama.test:11434/api/chat"
+    body = seen["body"]
+    assert body["model"] == "gemma3:4b" and body["stream"] is False and body["keep_alive"] == "10m"
+    assert body["messages"] == [
+        {"role": "system", "content": "be brief"}, {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "ok"}, {"role": "user", "content": "more"},
+    ]
+    assert body["options"] == {"temperature": 0.5, "num_ctx": 2048, "num_predict": 64}
+    assert "format" not in body
+
+
+def test_ollama_per_call_options_override_the_defaults():
+    seen = {}
+
+    def handler(request):
+        seen["body"] = json.loads(request.content)
+        return ok("{}")
+
+    schema = {"type": "object", "properties": {"target": {"type": "string"}}}
+    make_ollama(handler).generate(HELLO, max_tokens=10, temperature=0.0, json_schema=schema)
+    assert seen["body"]["options"]["num_predict"] == 10
+    assert seen["body"]["options"]["temperature"] == 0.0
+    assert seen["body"]["format"] == schema
+
+
+def test_ollama_without_a_token_limit_leaves_it_to_the_model():
+    seen = {}
+
+    def handler(request):
+        seen["options"] = json.loads(request.content)["options"]
+        return ok()
+
+    make_ollama(handler, max_tokens=None).generate(HELLO)
+    assert "num_predict" not in seen["options"]
+
+
+def test_ollama_errors_become_llm_errors_with_helpful_text():
+    def down(request):
+        raise httpx.ConnectError("refused")
+
+    def slow(request):
+        raise httpx.ReadTimeout("too slow")
+
+    with pytest.raises(LLMError, match="Is it running"):
+        make_ollama(down).generate(HELLO)
+    with pytest.raises(LLMError, match="in time"):
+        make_ollama(slow).generate(HELLO)
+    with pytest.raises(LLMError, match="ollama pull gemma3:4b"):
+        make_ollama(lambda r: httpx.Response(404, json={"error": "model not found"})).generate(HELLO)
+    with pytest.raises(LLMError, match="HTTP 500"):
+        make_ollama(lambda r: httpx.Response(500, text="boom")).generate(HELLO)
+    with pytest.raises(LLMError, match="Unexpected"):
+        make_ollama(lambda r: httpx.Response(200, json={"nope": 1})).generate(HELLO)
+    with pytest.raises(LLMError, match="Unexpected"):
+        make_ollama(lambda r: httpx.Response(200, text="not json")).generate(HELLO)
+
+
+def test_ollama_status():
+    tags = {"models": [{"name": "gemma3:1b", "size": 5}, {"name": "gemma3:4b", "model": "gemma3:4b", "size": 3_300_000_000}]}
+    status = make_ollama(lambda r: httpx.Response(200, json=tags)).status()
+    assert status == {"model": "gemma3:4b", "host": "http://ollama.test:11434", "reachable": True,
+                      "installed": True, "size_bytes": 3_300_000_000}
+    missing = make_ollama(lambda r: httpx.Response(200, json={"models": []})).status()
+    assert missing["reachable"] and not missing["installed"]
+
+    def down(request):
+        raise httpx.ConnectError("refused")
+
+    unreachable = make_ollama(down).status()
+    assert not unreachable["reachable"] and not unreachable["installed"]
+
+
+def test_ollama_client_satisfies_the_protocol():
+    assert isinstance(make_ollama(lambda r: ok()), LLMClient)
 
 
 def test_all_players_share_one_client():
@@ -77,9 +147,9 @@ def test_all_players_share_one_client():
 
 def test_game_creates_the_client_once_when_none_is_given():
     with patch("backend.game.game_logic.create_llm_client", return_value=FakeLLMClient("x")) as factory:
-        game = WerewolfGame(num_players=8, ai_provider="gemini")
+        game = WerewolfGame(num_players=8)
         game.setup_game()
-    factory.assert_called_once_with("gemini")
+    factory.assert_called_once_with()
     assert len({id(agent.llm) for agent in game.player_agents.values()}) == 1
 
 

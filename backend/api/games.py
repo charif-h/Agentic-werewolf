@@ -1,7 +1,7 @@
 """Create, inspect and play games"""
 import asyncio
 import logging
-from typing import Optional, Set
+from typing import Set
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
@@ -26,7 +26,6 @@ _background_tasks: Set[asyncio.Task] = set()
 class GameRequest(BaseModel):
     """Request model for creating a game"""
     num_players: int = Field(default_factory=lambda: get_settings().default_players, ge=1, le=1000)
-    ai_provider: Optional[str] = None
 
 
 @router.post("")
@@ -35,13 +34,13 @@ async def create_game(request: GameRequest):
     Create a new game and return its id
 
     Args:
-        request: Game creation request with num_players and ai_provider
+        request: Game creation request with num_players
     """
-    # Limit players to reduce API calls and avoid rate limits
+    # Limit the number of players: every one of them is a model call
     settings = get_settings()
     num_players = max(settings.min_players, min(request.num_players, settings.max_players))
 
-    game = WerewolfGame(num_players=num_players, ai_provider=request.ai_provider)
+    game = WerewolfGame(num_players=num_players)
     game_state = await asyncio.to_thread(game.setup_game)
     session = state.sessions.create(game)
 

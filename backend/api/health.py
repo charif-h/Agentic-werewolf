@@ -1,8 +1,10 @@
 """Root, health and provider information"""
 from fastapi import APIRouter
 
-from backend.agents.ai_provider import AIProvider
+import asyncio
+
 from backend.api import state
+from backend.llm.factory import create_llm_client
 
 router = APIRouter()
 
@@ -23,12 +25,7 @@ async def health():
     return {"status": "ok", "games": len(state.sessions)}
 
 
-@router.get("/api/providers")
-async def get_providers():
-    """Get available AI providers"""
-    try:
-        providers = AIProvider.get_available_providers()
-        return {"providers": providers}
-    except Exception:
-        # Don't expose internal error details
-        return {"providers": [], "error": "Failed to load AI providers"}
+@router.get("/api/model")
+async def get_model():
+    """Local model status: is Ollama reachable and is the model installed?"""
+    return await asyncio.to_thread(create_llm_client().status)

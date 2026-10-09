@@ -10,17 +10,16 @@ export const api = axios.create({
 });
 
 export const gameApi = {
-  // Get available AI providers
-  getProviders: async () => {
-    const response = await api.get('/api/providers');
+  // Local model status: { model, host, reachable, installed, size_bytes }
+  getModel: async () => {
+    const response = await api.get('/api/model');
     return response.data;
   },
 
   // Create a new game; the response contains its game_id
-  createGame: async (numPlayers = 8, aiProvider = null) => {
+  createGame: async (numPlayers = 8) => {
     const response = await api.post('/api/games', {
-      num_players: numPlayers,
-      ai_provider: aiProvider
+      num_players: numPlayers
     });
     return response.data;
   },

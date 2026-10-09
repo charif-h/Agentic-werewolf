@@ -10,19 +10,18 @@ function App() {
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [providers, setProviders] = useState([]);
+  const [model, setModel] = useState(null);
 
-  // Load available providers on mount
+  // Load the local model status on mount
   useEffect(() => {
-    loadProviders();
+    loadModel();
   }, []);
 
-  const loadProviders = async () => {
+  const loadModel = async () => {
     try {
-      const data = await gameApi.getProviders();
-      setProviders(data.providers || []);
+      setModel(await gameApi.getModel());
     } catch (err) {
-      console.error('Error loading providers:', err);
+      console.error('Error loading model status:', err);
     }
   };
 
@@ -30,7 +29,7 @@ function App() {
     setLoading(true);
     setError(null);
     try {
-      const created = await gameApi.createGame(8, null);
+      const created = await gameApi.createGame(8);
       setGameId(created.game_id);
       await loadGameState(created.game_id);
       await loadPlayers(created.game_id);
@@ -94,9 +93,13 @@ function App() {
       <div className="header">
         <h1>🐺 The Werewolves of Millers Hollow 🌙</h1>
         <p>AI Agents Playing the Classic Social Deduction Game</p>
-        {providers.length > 0 && (
-          <p style={{ fontSize: '0.9em', color: '#4ecdc4' }}>
-            Available AI Providers: {providers.join(', ')}
+        {model && (
+          <p style={{ fontSize: '0.9em', color: model.installed ? '#4ecdc4' : '#ff6b6b' }}>
+            {model.installed
+              ? `Local model: ${model.model}`
+              : model.reachable
+                ? `Model ${model.model} is not installed (run: ollama pull ${model.model})`
+                : 'Ollama is not running'}
           </p>
         )}
       </div>

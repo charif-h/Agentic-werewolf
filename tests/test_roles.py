@@ -97,7 +97,6 @@ def test_guard_cannot_protect_the_same_player_twice_in_a_row():
 def test_werewolf_specifics():
     wolf = get_handler(Role.WEREWOLF)
     assert wolf.announce_night_choice
-    assert "stay quiet" in wolf.rate_limit_reply
     assert "WEREWOLF" in wolf.voting_strategy
     assert "VILLAGE TEAM" in get_handler(Role.SEER).voting_strategy
 

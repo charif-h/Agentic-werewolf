@@ -5,8 +5,8 @@ from backend.config import Settings
 
 
 def make(monkeypatch, **env):
-    for key in ("AI_PROVIDER", "MAX_PLAYERS", "OPENAI_API_KEY", "GOOGLE_API_KEY",
-                "MISTRAL_API_KEY", "CORS_ORIGINS", "DEFAULT_PLAYERS"):
+    for key in ("LLM_MODEL", "OLLAMA_HOST", "MAX_PLAYERS", "CORS_ORIGINS", "DEFAULT_PLAYERS",
+                "LLM_NUM_CTX"):
         monkeypatch.delenv(key, raising=False)
     for key, value in env.items():
         monkeypatch.setenv(key, value)
@@ -15,19 +15,20 @@ def make(monkeypatch, **env):
 
 def test_defaults(monkeypatch):
     s = make(monkeypatch)
-    assert s.ai_provider == "openai"
+    assert s.llm_model == "gemma3:4b"
+    assert s.ollama_host == "http://localhost:11434"
+    assert (s.llm_num_ctx, s.llm_max_tokens, s.llm_keep_alive) == (4096, 256, "30m")
     assert (s.default_players, s.min_players, s.max_players) == (8, 4, 12)
     assert s.discussion_max_rounds == 5
     assert s.cors_origins == ["http://localhost:3000", "http://127.0.0.1:3000"]
-    assert s.openai_api_key is None
 
 
 def test_environment_overrides(monkeypatch):
-    s = make(monkeypatch, AI_PROVIDER="gemini", MAX_PLAYERS="10", GOOGLE_API_KEY="k",
+    s = make(monkeypatch, LLM_MODEL="gemma3:1b", MAX_PLAYERS="10", OLLAMA_HOST="http://gpu-box:11434",
              CORS_ORIGINS='["https://example.com"]')
-    assert s.ai_provider == "gemini"
+    assert s.llm_model == "gemma3:1b"
     assert s.max_players == 10
-    assert s.google_api_key == "k"
+    assert s.ollama_host == "http://gpu-box:11434"
     assert s.cors_origins == ["https://example.com"]
 
 
@@ -36,13 +37,15 @@ def test_invalid_value_is_rejected(monkeypatch):
         make(monkeypatch, DEFAULT_PLAYERS="0")
 
 
-def test_provider_factory_uses_settings(monkeypatch):
-    from backend.agents.ai_provider import AIProvider
-    import backend.agents.ai_provider as module
+def test_llm_client_is_built_from_the_settings(monkeypatch):
+    import backend.llm.factory as factory
 
-    monkeypatch.setattr(module, "get_settings", lambda: make(monkeypatch, GOOGLE_API_KEY="k"))
-    assert AIProvider.get_available_providers() == ["gemini"]
-    with pytest.raises(ValueError, match="OPENAI_API_KEY"):
-        AIProvider.get_llm()
-    with pytest.raises(ValueError, match="Unknown AI provider"):
-        AIProvider.get_llm(provider="nope")
+    monkeypatch.setattr(factory, "get_settings",
+                        lambda: make(monkeypatch, LLM_MODEL="gemma3:1b", LLM_NUM_CTX="2048"))
+    factory.create_llm_client.cache_clear()
+    try:
+        client = factory.create_llm_client()
+        assert (client.model, client.num_ctx) == ("gemma3:1b", 2048)
+        assert factory.create_llm_client() is client      # one shared client
+    finally:
+        factory.create_llm_client.cache_clear()
