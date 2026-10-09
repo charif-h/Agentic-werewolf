@@ -6,8 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import List, Optional
 import json
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from backend.config import get_settings
 from backend.game.game_logic import WerewolfGame
 from backend.agents.ai_provider import AIProvider
 from backend.models.game_models import GamePhase
@@ -17,7 +18,7 @@ app = FastAPI(title="Werewolves of Millers Hollow API")
 # CORS middleware for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your frontend domain
+    allow_origins=get_settings().cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -75,7 +76,7 @@ async def get_providers():
 
 class GameRequest(BaseModel):
     """Request model for creating a game"""
-    num_players: int = 8  # Default to 8 players to reduce API calls
+    num_players: int = Field(default_factory=lambda: get_settings().default_players)
     ai_provider: Optional[str] = None
 
 
@@ -91,8 +92,8 @@ async def create_game(request: GameRequest):
     
     try:
         # Limit players to reduce API calls and avoid rate limits
-        max_players = 12  # Maximum 12 players to keep API usage manageable
-        num_players = min(request.num_players, max_players)
+        settings = get_settings()
+        num_players = max(settings.min_players, min(request.num_players, settings.max_players))
         
         game = WerewolfGame(num_players=num_players, ai_provider=request.ai_provider)
         state = game.setup_game()
@@ -209,7 +210,7 @@ async def next_phase():
         elif current_phase.value == "day":
             # Start discussion (dynamic multi-round discussion)
             game.state.phase = GamePhase.DISCUSSION
-            messages = game.conduct_discussion(max_rounds=5)
+            messages = game.conduct_discussion()
             result = {
                 "phase": "discussion",
                 "messages": messages
@@ -318,4 +319,4 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=get_settings().host, port=get_settings().port)

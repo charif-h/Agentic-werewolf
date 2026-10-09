@@ -57,13 +57,19 @@ Then open:
 
 ### Configuration (`.env`)
 
-| Variable | Meaning |
-|---|---|
-| `AI_PROVIDER` | `openai`, `gemini` or `mistral` |
-| `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY` | key for the chosen provider |
-| `REACT_APP_API_URL` | backend URL used by the frontend (default `http://localhost:8000`) |
+All settings live in `backend/config.py` and can be set in `.env` or as environment variables (see `.env.example` for the full list).
 
-The `.env` file must be in the project root. The player count is capped at 12 by the backend (the UI button asks for 24 but the backend reduces it).
+| Variable | Default | Meaning |
+|---|---|---|
+| `AI_PROVIDER` | `openai` | `openai`, `gemini` or `mistral` |
+| `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY` | | key for the chosen provider |
+| `OPENAI_MODEL`, `GEMINI_MODEL`, `MISTRAL_MODEL` | `gpt-4`, `gemini-2.5-pro`, `mistral-small-latest` | model names |
+| `DEFAULT_PLAYERS`, `MIN_PLAYERS`, `MAX_PLAYERS` | 8, 4, 12 | player count (requests are clamped to the min/max) |
+| `DISCUSSION_MAX_ROUNDS` | 5 | maximum discussion rounds |
+| `CORS_ORIGINS` | `["http://localhost:3000"]` | allowed frontend origins (JSON list) |
+| `REACT_APP_API_URL` | `http://localhost:8000` | backend URL used by the frontend |
+
+The `.env` file must be in the project root.
 
 ## API
 

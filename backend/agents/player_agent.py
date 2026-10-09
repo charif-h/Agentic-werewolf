@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from backend.models.game_models import PlayerProfile
 from backend.agents.ai_provider import AIProvider
+from backend.config import get_settings
 from backend.game.targets import pick_target
 from backend.roles import get_handler
 
@@ -22,7 +23,7 @@ class PlayerAgent:
             ai_provider: Which AI provider to use (openai, gemini, mistral)
         """
         self.profile = profile
-        self.llm = AIProvider.get_llm(provider=ai_provider, temperature=0.8)
+        self.llm = AIProvider.get_llm(provider=ai_provider)
         self.memory = []  # Store conversation history
         
     @property
@@ -64,7 +65,7 @@ Your personality influences how you:
         messages = [SystemMessage(content=system_prompt)]
         
         # Add recent memory ensuring alternating User/Assistant pattern
-        recent_memory = self.memory[-4:]  # Last 4 messages (2 complete exchanges)
+        recent_memory = self.memory[-get_settings().memory_messages:] if get_settings().memory_messages else []
         
         # Ensure we don't have consecutive messages of the same type
         if recent_memory:
@@ -106,7 +107,7 @@ Your personality influences how you:
         discussion_context = ""
         discussion_history = game_state.get('discussion_history', [])
         if discussion_history:
-            discussion_context = "\nRecent Discussions:\n" + "\n".join(discussion_history[-10:])  # Last 10 messages
+            discussion_context = "\nRecent Discussions:\n" + "\n".join(discussion_history[-get_settings().discussion_context_messages:])
         
         # Build comprehensive game context
         game_context = f"""

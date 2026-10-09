@@ -10,6 +10,7 @@ import random
 import time
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
+from backend.config import get_settings
 from backend.engine import rules
 from backend.roles import WEREWOLVES, get_handler, night_handlers
 from backend.models.game_models import (
@@ -134,17 +135,19 @@ class WerewolfGame:
 
         return announcement
 
-    def conduct_discussion(self, max_rounds: int = 5) -> List[str]:
+    def conduct_discussion(self, max_rounds: Optional[int] = None) -> List[str]:
         """
         Conduct dynamic discussion phase where players can respond to each other
         Each time someone speaks, all players get a chance to respond
 
         Args:
-            max_rounds: Maximum number of discussion rounds (default: 5)
+            max_rounds: Maximum number of discussion rounds (default: DISCUSSION_MAX_ROUNDS)
 
         Returns:
             List of discussion messages
         """
+        settings = get_settings()
+        max_rounds = max_rounds or settings.discussion_max_rounds
         self.state.phase = GamePhase.DISCUSSION
         messages = []
 
@@ -175,7 +178,7 @@ class WerewolfGame:
                     agent = self.player_agents[player.id]
 
                     # Give each player the updated conversation to consider responding
-                    time.sleep(0.3)  # Shorter delay for more dynamic interaction
+                    time.sleep(settings.discussion_delay)
                     comment = agent.discuss(current_conversation, alive_names)
 
                     # Filter out "no comment" responses
@@ -203,7 +206,7 @@ class WerewolfGame:
                     error_msg = str(e).lower()
                     if "rate limit" in error_msg or "429" in error_msg:
                         logger.warning("Rate limit hit for %s, they stay silent this round", player.name)
-                        time.sleep(0.8)  # Extra delay on rate limit
+                        time.sleep(settings.rate_limit_delay)  # Extra delay on rate limit
                     else:
                         logger.warning("Error with player %s: %s", player.name, e)
                     continue
@@ -217,7 +220,7 @@ class WerewolfGame:
                 break
 
             # Shorter delay between rounds for more dynamic feel
-            time.sleep(0.5)
+            time.sleep(settings.round_delay)
 
         # Save discussion to game state
         if discussion.messages:
@@ -256,7 +259,7 @@ class WerewolfGame:
         for player in shuffled_voters:
             reason = None
             try:
-                time.sleep(0.5)  # Rate limit protection
+                time.sleep(get_settings().vote_delay)
 
                 vote_target = self.player_agents[player.id].vote(full_conversation, candidate_names)
                 target = rules.find_player_by_name(self.state, vote_target)
@@ -270,7 +273,7 @@ class WerewolfGame:
                 if "rate limit" in error_msg or "429" in error_msg:
                     logger.warning("Rate limit hit during voting for %s", player.name)
                     reason = "rate limited"
-                    time.sleep(1)  # Extra delay after rate limit
+                    time.sleep(get_settings().rate_limit_delay)  # Extra delay after rate limit
                 else:
                     logger.warning("Voting error for %s: %s", player.name, e)
                     reason = "error fallback"
