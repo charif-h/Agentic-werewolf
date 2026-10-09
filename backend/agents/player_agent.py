@@ -4,9 +4,10 @@ Player AI Agent - Controls individual player behavior
 import random
 from typing import Optional, Dict, Any
 from langchain_core.messages import HumanMessage, SystemMessage
-from backend.models.game_models import PlayerProfile, Role
+from backend.models.game_models import PlayerProfile
 from backend.agents.ai_provider import AIProvider
 from backend.game.targets import pick_target
+from backend.roles import get_handler
 
 
 class PlayerAgent:
@@ -24,6 +25,11 @@ class PlayerAgent:
         self.llm = AIProvider.get_llm(provider=ai_provider, temperature=0.8)
         self.memory = []  # Store conversation history
         
+    @property
+    def handler(self):
+        """Role handler holding this player's role-specific prompts and rules"""
+        return get_handler(self.profile.role)
+        
     def _build_system_prompt(self) -> str:
         """Build the system prompt based on player's personality and role"""
         base_prompt = f"""You are {self.profile.name}, a {self.profile.age}-year-old {self.profile.sex.value} 
@@ -39,17 +45,7 @@ Your personality influences how you:
 """
         
         if self.profile.role:
-            role_descriptions = {
-                Role.WEREWOLF: "You are a WEREWOLF. Your goal is to eliminate villagers without being discovered. During the night, you coordinate with other werewolves to choose a victim. During the day, you must blend in and deflect suspicion.",
-                Role.VILLAGER: "You are a VILLAGER. Your goal is to identify and eliminate the werewolves. You have no special powers, but you can use logic and observation during discussions.",
-                Role.SEER: "You are the SEER. Each night, you can discover the true identity of one player. Use this information wisely during day discussions without revealing your role.",
-                Role.WITCH: "You are the WITCH. You have two potions: one to save someone from death, and one to kill someone. You can use each potion only once during the game.",
-                Role.HUNTER: "You are the HUNTER. If you are killed, you can immediately shoot and eliminate another player of your choice.",
-                Role.CUPID: "You are CUPID. On the first night, you choose two players to fall in love. If one dies, the other dies of heartbreak.",
-                Role.LITTLE_GIRL: "You are the LITTLE GIRL. You can peek during the werewolf phase at night, but risk being caught.",
-                Role.GUARD: "You are the GUARD. Each night, you can protect one player from werewolf attacks (but not the same player twice in a row)."
-            }
-            base_prompt += f"\n\nYour Role: {role_descriptions.get(self.profile.role, '')}"
+            base_prompt += f"\n\nYour Role: {self.handler.description}"
         
         base_prompt += "\n\nPlay authentically according to your personality and role. Stay in character."
         return base_prompt
@@ -138,11 +134,8 @@ Current Action: {context}
             # Handle rate limit and other API errors
             error_msg = str(e).lower()
             if "rate limit" in error_msg or "429" in error_msg:
-                # Return a default response based on personality for rate limit errors
-                if self.profile.role == Role.WEREWOLF:
-                    return "I'll stay quiet for now and observe."
-                else:
-                    return "I'm still thinking about this situation."
+                # Default in-character reply for rate limit errors
+                return self.handler.rate_limit_reply
             else:
                 # For other errors, re-raise
                 raise e
@@ -157,30 +150,10 @@ Current Action: {context}
         Returns:
             Target player name or None
         """
-        if self.profile.role == Role.WEREWOLF:
-            # Get valid targets (non-werewolves only)
-            valid_targets = game_state.get('valid_targets', [])
-            if valid_targets:
-                target_list = ', '.join(valid_targets)
-                context = f"As a werewolf, choose one villager to eliminate tonight from these targets: {target_list}. You cannot target other werewolves. Respond with ONLY the player's name."
-            else:
-                context = "As a werewolf, choose a villager to eliminate tonight. You cannot target other werewolves. Respond with ONLY the player's name."
-        elif self.profile.role == Role.SEER:
-            context = f"As the seer, choose a player whose identity you want to reveal{self._target_suffix(game_state)} Respond with ONLY the player's name."
-        elif self.profile.role == Role.GUARD:
-            context = f"As the guard, choose a player to protect tonight{self._target_suffix(game_state)} Respond with ONLY the player's name."
-        else:
+        if not self.handler.acts_at_night:
             return None
-        
+        context = self.handler.night_prompt(game_state.get('valid_targets', []))
         return self.get_action(game_state, context)
-    
-    @staticmethod
-    def _target_suffix(game_state: Dict[str, Any]) -> str:
-        """Sentence ending listing the valid targets, if the game provided them"""
-        valid_targets = game_state.get('valid_targets', [])
-        if valid_targets:
-            return f" from these players: {', '.join(valid_targets)}."
-        return "."
     
     def discuss(self, conversation_history: str, alive_players: list[str]) -> str:
         """
@@ -194,7 +167,7 @@ Current Action: {context}
             Strategic comment or "no comment" if player chooses to stay silent
         """
         # Build strategic context based on role
-        role_strategy = self._get_role_strategy()
+        role_strategy = self.handler.discussion_strategy
         
         # Check if player should be more likely to respond
         should_respond_bonus = self._should_respond_to_conversation(conversation_history)
@@ -232,11 +205,8 @@ Do you want to respond to the current conversation?"""
             return response
             
         except Exception:
-            # Fallback based on role if API fails
-            if self.profile.role == Role.WEREWOLF:
-                return "no comment"  # Werewolves tend to stay quiet
-            else:
-                return "no comment"  # Safe fallback
+            # Safe fallback if the API fails
+            return "no comment"
     
     def _should_respond_to_conversation(self, conversation_history: str) -> str:
         """
@@ -260,13 +230,9 @@ Do you want to respond to the current conversation?"""
             if len(lines) >= 2:  # There are recent messages
                 factors.append("- Recent activity in conversation")
         
-        # Role-specific response factors
-        if self.profile.role == Role.SEER:
-            factors.append("- As someone with special knowledge, consider if you should guide the discussion")
-        elif self.profile.role == Role.WEREWOLF:
-            factors.append("- Consider if you need to deflect suspicion or redirect attention")
-        elif self.profile.role in [Role.VILLAGER, Role.WITCH, Role.GUARD, Role.HUNTER]:
-            factors.append("- Consider if you can help identify threats")
+        # Role-specific response factor
+        if self.handler.response_hint:
+            factors.append(self.handler.response_hint)
         
         if not factors:
             factors.append("- No special pressure to respond")
@@ -290,7 +256,7 @@ Do you want to respond to the current conversation?"""
         if not other_players:
             return alive_players[0] if alive_players else ""
         
-        role_voting_strategy = self._get_voting_strategy()
+        role_voting_strategy = self.handler.voting_strategy
         
         context = f"""You are {self.profile.name} voting to eliminate someone.
 
@@ -323,57 +289,6 @@ Who do you vote to eliminate?"""
         except Exception:
             # Random vote as fallback to ensure independence
             return random.choice(other_players)
-    
-    def _get_role_strategy(self) -> str:
-        """Get strategic guidance based on player's role"""
-        strategies = {
-            Role.WEREWOLF: """Your goal: eliminate villagers without being discovered.
-- Act like a concerned villager
-- Subtly redirect suspicion onto others
-- Don't defend other werewolves obviously""",
-
-            Role.VILLAGER: """Your goal: find and eliminate werewolves.
-- Ask probing questions
-- Point out suspicious behavior
-- Work with others to find threats""",
-
-            Role.SEER: """You can see true identities at night.
-- Use your knowledge subtly
-- Don't reveal your role unless necessary
-- Guide discussions toward confirmed werewolves""",
-
-            Role.WITCH: """You have healing and poison potions.
-- Keep your role secret
-- Use night action knowledge carefully
-- Observe who might know too much""",
-
-            Role.GUARD: """You can protect players from attacks.
-- Keep protection patterns secret
-- Use knowledge of night events subtly
-- Look for signs of werewolf coordination""",
-
-            Role.HUNTER: """If killed, you can eliminate another player.
-- Be moderately active to help the village
-- Keep a mental list of suspects
-- Don't fear taking reasonable risks""",
-        }
-        
-        return strategies.get(self.profile.role, strategies[Role.VILLAGER])
-    
-    def _get_voting_strategy(self) -> str:
-        """Get voting strategy based on role"""
-        if self.profile.role == Role.WEREWOLF:
-            return """As a WEREWOLF, vote to eliminate:
-1. Confirmed or suspected special roles (seer, witch, etc.)
-2. The most active and influential villagers
-3. Anyone who has been suspicious of werewolves
-4. Avoid voting for fellow werewolves unless absolutely necessary"""
-        else:
-            return """As a VILLAGE TEAM member, vote to eliminate:
-1. The player who acted most suspiciously during discussions
-2. Anyone who deflected questions or was overly defensive
-3. Players whose behavior doesn't match their claimed actions
-4. The person you personally believe is most likely to be a werewolf"""
     
     def _get_personality_behavior(self) -> str:
         """Get brief personality-based behavior description"""
