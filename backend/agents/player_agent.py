@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from backend.models.game_models import PlayerProfile, Role
 from backend.agents.ai_provider import AIProvider
+from backend.game.targets import pick_target
 
 
 class PlayerAgent:
@@ -165,13 +166,21 @@ Current Action: {context}
             else:
                 context = "As a werewolf, choose a villager to eliminate tonight. You cannot target other werewolves. Respond with ONLY the player's name."
         elif self.profile.role == Role.SEER:
-            context = "As the seer, choose a player whose identity you want to reveal. Respond with ONLY the player's name."
+            context = f"As the seer, choose a player whose identity you want to reveal{self._target_suffix(game_state)} Respond with ONLY the player's name."
         elif self.profile.role == Role.GUARD:
-            context = "As the guard, choose a player to protect tonight. Respond with ONLY the player's name."
+            context = f"As the guard, choose a player to protect tonight{self._target_suffix(game_state)} Respond with ONLY the player's name."
         else:
             return None
         
         return self.get_action(game_state, context)
+    
+    @staticmethod
+    def _target_suffix(game_state: Dict[str, Any]) -> str:
+        """Sentence ending listing the valid targets, if the game provided them"""
+        valid_targets = game_state.get('valid_targets', [])
+        if valid_targets:
+            return f" from these players: {', '.join(valid_targets)}."
+        return "."
     
     def discuss(self, conversation_history: str, alive_players: list[str]) -> str:
         """
@@ -308,18 +317,8 @@ Who do you vote to eliminate?"""
             # Extract player name from response
             response = response.strip()
             
-            # Try to find exact matches first
-            for player in other_players:
-                if player.lower() == response.lower():
-                    return player
-            
-            # Try partial matches
-            for player in other_players:
-                if player.lower() in response.lower():
-                    return player
-            
             # Unclear answer: random valid candidate (avoids bias toward the first player)
-            return random.choice(other_players)
+            return pick_target(response, other_players)
             
         except Exception:
             # Random vote as fallback to ensure independence

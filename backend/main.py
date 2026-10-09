@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from backend.game.game_logic import WerewolfGame
 from backend.agents.ai_provider import AIProvider
+from backend.models.game_models import GamePhase
 
 app = FastAPI(title="Werewolves of Millers Hollow API")
 
@@ -207,7 +208,7 @@ async def next_phase():
         
         elif current_phase.value == "day":
             # Start discussion (dynamic multi-round discussion)
-            game.state.phase = "discussion"
+            game.state.phase = GamePhase.DISCUSSION
             messages = game.conduct_discussion(max_rounds=5)
             result = {
                 "phase": "discussion",
