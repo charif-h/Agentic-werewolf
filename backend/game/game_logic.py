@@ -14,12 +14,12 @@ from backend.config import get_settings
 from backend.engine import rules
 from backend.roles import WEREWOLVES, get_handler, night_handlers
 from backend.models.game_models import (
-    PlayerProfile, GameState, GamePhase, Role, Discussion, Message
+    PlayerProfile, GameState, GamePhase, PlayerStatus, Role, Discussion, Message
 )
 from backend.agents.profile_generator import generate_all_players
 from backend.agents.player_agent import PlayerAgent
 from backend.game.game_master import GameMaster
-from backend.game.targets import pick_target
+from backend.game.targets import parse_witch_answer, pick_target
 
 
 logger = logging.getLogger(__name__)
@@ -54,6 +54,15 @@ class WerewolfGame:
 
         for player in players:
             self.player_agents[player.id] = PlayerAgent(player, self.ai_provider)
+
+        # Werewolves know who their teammates are
+        wolves = [p for p in players if get_handler(p.role).team == WEREWOLVES]
+        for wolf in wolves:
+            mates = [p.name for p in wolves if p.id != wolf.id]
+            if mates:
+                self.player_agents[wolf.id].add_knowledge(
+                    f"The other werewolves are: {', '.join(mates)}."
+                )
 
         self.state.players = players
         self.state.phase = GamePhase.SETUP
@@ -98,7 +107,93 @@ class WerewolfGame:
                 decision = self.game_master.announce_werewolf_decision()
                 self.state.game_log.append(f"[GAME MASTER] {decision}")
 
-        return rules.resolve_night(self.state, targets)
+        witch_save, witch_poison = self._witch_decision(alive, targets.get(Role.WEREWOLF))
+        results = rules.resolve_night(self.state, targets, witch_save, witch_poison)
+
+        self._record_night_knowledge(results, targets, witch_poison)
+        self._resolve_hunter_shots(
+            [p for pid in results['deaths'] if (p := rules.find_player_by_id(self.state, pid))],
+            results['hunter_shots'],
+        )
+        return results
+
+    def _witch_decision(self, alive: List[PlayerProfile], victim: Optional[PlayerProfile]
+                        ) -> Tuple[bool, Optional[PlayerProfile]]:
+        """
+        Ask the witch whether to use her potions. Unclear answers or LLM errors
+        mean she does nothing (a potion is never used at random).
+        """
+        witch = next((p for p in alive if p.role == Role.WITCH), None)
+        if witch is None:
+            return False, None
+        options = rules.witch_options(self.state, victim)
+        if not (options['can_save'] or options['can_poison']):
+            return False, None
+        try:
+            answer = self.player_agents[witch.id].witch_action(
+                self._get_game_state_dict(), victim.name if victim else None,
+                options['can_save'], options['can_poison'], options['poison_targets'],
+            )
+        except Exception as e:
+            logger.warning("Witch action failed for %s: %s", witch.name, e)
+            return False, None
+        save, poison_name = parse_witch_answer(
+            answer, options['can_save'], options['can_poison'], options['poison_targets']
+        )
+        return save, rules.find_player_by_name(self.state, poison_name)
+
+    def _record_night_knowledge(self, results: Dict, targets: Dict[Role, Optional[PlayerProfile]],
+                                witch_poison: Optional[PlayerProfile]) -> None:
+        """Tell the seer and the witch what they learned tonight"""
+        night = self.state.day_number
+        check = results.get('seer_check')
+        seer = next((p for p in rules.alive_players(self.state) if p.role == Role.SEER), None)
+        if check and seer:
+            self.player_agents[seer.id].add_knowledge(
+                f"Night {night}: you saw that {check['player']} is a {check['role']}."
+            )
+        witch = next((p for p in self.state.players if p.role == Role.WITCH), None)
+        if witch and witch.status == PlayerStatus.ALIVE:
+            victim = targets.get(Role.WEREWOLF)
+            if results['witch_saved'] and victim:
+                self.player_agents[witch.id].add_knowledge(
+                    f"Night {night}: you used your healing potion to save {victim.name}.")
+            if results['witch_killed'] and witch_poison:
+                self.player_agents[witch.id].add_knowledge(
+                    f"Night {night}: you used your poison potion on {witch_poison.name}.")
+
+    def _resolve_hunter_shots(self, died: List[PlayerProfile], shots: List) -> List[PlayerProfile]:
+        """
+        Let every hunter among `died` shoot someone (the shot may kill another
+        hunter, who shoots in turn)
+
+        Args:
+            died: Players who just died
+            shots: List the (hunter id, target id) pairs are appended to
+
+        Returns:
+            Everyone killed by hunter shots
+        """
+        shot_dead = []
+        pending = rules.dead_hunters(died)
+        while pending:
+            hunter = pending.pop(0)
+            targets = rules.hunter_targets(self.state)
+            if not targets:
+                break
+            try:
+                answer = self.player_agents[hunter.id].hunter_shot(self._get_game_state_dict(), targets)
+            except Exception as e:
+                logger.warning("Hunter shot failed for %s: %s", hunter.name, e)
+                answer = None
+            victim = rules.find_player_by_name(self.state, pick_target(answer, targets))
+            killed = rules.hunter_shoot(self.state, victim)
+            shots.append((hunter.id, victim.id))
+            shot_dead += killed
+            pending += rules.dead_hunters(killed)
+            announcement = self.game_master.announce_hunter_shot(hunter.name, victim.name)
+            self.state.game_log.append(f"[GAME MASTER] {announcement}")
+        return shot_dead
 
     def _choose_night_target(self, actor: Optional[PlayerProfile]) -> Optional[PlayerProfile]:
         """
@@ -290,6 +385,7 @@ class WerewolfGame:
                 eliminated.name, eliminated.role.value, by_vote=True
             )
             self.state.game_log.append(f"[GAME MASTER] {announcement}")
+            self._resolve_hunter_shots([eliminated], [])
         return eliminated, vote_counts
 
     def check_win_condition(self) -> Optional[str]:

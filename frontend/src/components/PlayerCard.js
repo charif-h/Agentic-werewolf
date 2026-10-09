@@ -12,9 +12,7 @@ const PlayerCard = ({ player }) => {
       'seer': '🔮 Seer',
       'witch': '🧙‍♀️ Witch',
       'hunter': '🏹 Hunter',
-      'cupid': '💘 Cupid',
       'guard': '🛡️ Guard',
-      'little_girl': '👧 Little Girl'
     };
     
     return roleDisplayMap[role] || `🎭 ${role}`;

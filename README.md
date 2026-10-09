@@ -10,9 +10,11 @@ An AI-driven version of *The Werewolves of Millers Hollow*. Every player is an L
 2. The UI advances the game with `POST /api/game/next-phase`: **night** (werewolves, seer, guard act) -> **day** (deaths announced) -> **discussion** (up to 5 rounds, players may speak or stay silent) -> **voting** -> next night, until a team wins.
 3. Villagers win when no werewolf is left. Werewolves win when they equal or outnumber everyone else.
 
-Role distribution depends on player count: werewolves = max(2, n // 6); Seer from 8 players, Witch from 10, Hunter from 12, Cupid from 14, Guard from 16; the rest are villagers.
+Role distribution depends on player count: werewolves = max(2, n // 6); Seer from 8 players, Witch from 10, Hunter from 12, Guard from 16; the rest are villagers.
 
-**Known limitations** (tracked as GitHub issues): Witch, Hunter and Cupid have no in-game effect yet; only one werewolf decides the night kill; a single global game is shared by all clients; the API blocks while the LLM is working.
+**Roles:** Werewolf (kills at night, knows its teammates), Villager, Seer (inspects one player per night and remembers the results), Guard (protects one player per night, never the same one twice in a row), Witch (one healing and one poison potion for the whole game), Hunter (shoots someone when killed). Cupid and Little Girl were removed: they were never implemented.
+
+**Known limitations** (tracked as GitHub issues): only one werewolf decides the night kill; a single global game is shared by all clients; the API blocks while the LLM is working.
 
 ## Requirements
 

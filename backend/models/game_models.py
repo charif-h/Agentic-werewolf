@@ -39,8 +39,6 @@ class Role(str, Enum):
     SEER = "seer"
     WITCH = "witch"
     HUNTER = "hunter"
-    CUPID = "cupid"
-    LITTLE_GIRL = "little_girl"
     GUARD = "guard"
 
 
@@ -67,7 +65,6 @@ class PlayerProfile(BaseModel):
     personality: PersonalityType
     role: Optional[Role] = None
     status: PlayerStatus = PlayerStatus.ALIVE
-    in_love_with: Optional[str] = None  # Player ID
     
     def get_personality_description(self) -> str:
         """Get detailed personality description for AI prompts"""
@@ -116,3 +113,6 @@ class GameState(BaseModel):
     night_actions: dict = Field(default_factory=dict)
     game_log: List[str] = Field(default_factory=list)
     discussions: List[Discussion] = Field(default_factory=list)  # Store all discussions for context
+    witch_heal_used: bool = False
+    witch_poison_used: bool = False
+    guard_last_protected: Optional[str] = None  # Player ID the guard protected last night

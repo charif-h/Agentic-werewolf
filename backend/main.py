@@ -81,10 +81,9 @@ def public_night_results(game: WerewolfGame, results: dict) -> dict:
     """Night results safe to send to every client (no guard or seer information)"""
     if get_settings().reveal_roles:
         return results
-    killed = game.state.night_actions.get('killed')
-    victim = next((p for p in game.state.players if p.id == killed), None)
-    died = victim is not None and victim.status == PlayerStatus.DEAD
-    return {"killed": victim.name if died else None}
+    dead_ids = list(results.get('deaths', [])) + [target for _, target in results.get('hunter_shots', [])]
+    names = [p.name for pid in dead_ids for p in game.state.players if p.id == pid]
+    return {"deaths": names}
 
 
 def server_error(action: str) -> HTTPException:

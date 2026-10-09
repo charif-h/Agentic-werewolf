@@ -14,4 +14,7 @@ class Witch(RoleHandler):
 - Use night action knowledge carefully
 - Observe who might know too much"""
     response_hint = "- Consider if you can help identify threats"
-    # No night action yet: the potions are not implemented (see issue "Implement or drop unfinished roles")
+
+    # The witch does not pick a single target like the other night roles: the
+    # game asks her to save the werewolves' victim and/or poison someone
+    # (see WerewolfGame._witch_decision), so she has no `night_order`.

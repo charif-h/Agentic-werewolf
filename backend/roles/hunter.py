@@ -14,4 +14,7 @@ class Hunter(RoleHandler):
 - Keep a mental list of suspects
 - Don't fear taking reasonable risks"""
     response_hint = "- Consider if you can help identify threats"
-    # The death shot is not implemented yet (see issue "Implement or drop unfinished roles")
+
+    death_shot = True
+    death_shot_instruction = ("You have just been eliminated. As the hunter, shoot one player "
+                              "with your last breath")

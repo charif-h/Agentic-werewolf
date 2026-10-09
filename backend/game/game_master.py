@@ -48,6 +48,9 @@ class GameMaster:
         # Deliberately does not name the victim: the night result is announced at dawn
         return "The werewolves have made their choice and go back to sleep."
 
+    def announce_hunter_shot(self, hunter_name: str, target_name: str) -> str:
+        return f"{hunter_name} was the hunter and shoots {target_name} with their last breath."
+
     def announce_discussion_end(self) -> str:
         return random.choice([
             "The discussion is over. Time to vote.",

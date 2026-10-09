@@ -45,7 +45,7 @@ def test_teams():
 def test_night_roles_in_acting_order():
     assert [h.role for h in night_handlers()] == [Role.WEREWOLF, Role.GUARD, Role.SEER]
     assert all(h.night_instruction for h in night_handlers())
-    for role in (Role.VILLAGER, Role.WITCH, Role.HUNTER, Role.CUPID, Role.LITTLE_GIRL):
+    for role in (Role.VILLAGER, Role.WITCH, Role.HUNTER):
         assert not get_handler(role).acts_at_night
 
 
@@ -78,6 +78,20 @@ def test_night_prompt():
         "Respond with ONLY the player's name.")
     assert get_handler(Role.WEREWOLF).night_prompt([]).endswith(
         "You cannot target other werewolves. Respond with ONLY the player's name.")
+
+
+def test_hunter_has_a_death_shot():
+    assert get_handler(Role.HUNTER).death_shot
+    assert get_handler(Role.HUNTER).death_shot_instruction
+    assert not any(get_handler(r).death_shot for r in Role if r != Role.HUNTER)
+
+
+def test_guard_cannot_protect_the_same_player_twice_in_a_row():
+    state = make_state([Role.GUARD, Role.VILLAGER, Role.VILLAGER])
+    guard = state.players[0]
+    assert get_handler(Role.GUARD).night_targets(state, guard) == ["P0", "P1", "P2"]
+    state.guard_last_protected = "p1"
+    assert get_handler(Role.GUARD).night_targets(state, guard) == ["P0", "P2"]
 
 
 def test_werewolf_specifics():

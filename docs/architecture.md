@@ -16,7 +16,7 @@ State lives in memory in one global `WerewolfGame` instance. There is no databas
 | `backend/main.py` | REST endpoints, `ConnectionManager` for WebSocket broadcast, CORS. Each endpoint calls `WerewolfGame` synchronously. |
 | `backend/prompts/` | Prompt templates for player agents as plain functions (persona, game context, discussion, vote). Role-specific text comes from the role handlers. |
 | `backend/roles/` | One module per role, registered in a registry (`get_handler(role)`). A `RoleHandler` holds the team, the prompts (description, discussion/voting strategy), and the night action (order, valid targets, what it records). Adding a role means adding one file. |
-| `backend/engine/rules.py` | Pure rules, no LLM or I/O: role distribution, valid night targets, night resolution (kill, guard, seer, lovers), vote tally, win condition. Randomness is injectable (`random.Random`), so a full game can run in a unit test. |
+| `backend/engine/rules.py` | Pure rules, no LLM or I/O: role distribution, valid night targets, night resolution (kill, guard, seer, witch potions), hunter death shot, vote tally, win condition. Randomness is injectable (`random.Random`), so a full game can run in a unit test. |
 | `backend/game/game_logic.py` | `WerewolfGame` orchestrator: asks player agents for decisions (LLM), passes them to the engine, writes the game log. Also runs the discussion rounds. |
 | `backend/agents/player_agent.py` | `PlayerAgent`: one per player. Builds the persona prompt from profile + role and exposes `night_action`, `discuss`, `vote`. Keeps its own short message memory. |
 | `backend/game/game_master.py` | `GameMaster`: template announcements (night, day, elimination, winner) and the rule that decides when discussion ends. No LLM calls. |
@@ -30,7 +30,7 @@ State lives in memory in one global `WerewolfGame` instance. There is no databas
 
 | Current phase | What happens | Next |
 |---|---|---|
-| night | werewolf (first one only) picks a target, guard protects, seer checks; kill applied unless protected; day announced | day |
+| night | werewolf (first one only) picks a target, guard protects, seer checks; then the witch is told the victim and may heal and/or poison; kill applied unless protected or healed; a dead hunter shoots; day announced | day |
 | day | `conduct_discussion(max_rounds=5)`: players in random order may speak or say "no comment"; the Game Master ends it after a silent round (from round 2), at max rounds, or from round 3 when fewer than max(2, players/3) people spoke | discussion |
 | discussion | every player votes independently; most votes is eliminated (ties random); win condition checked | night or ended |
 
