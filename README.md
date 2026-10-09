@@ -14,7 +14,7 @@ Role distribution depends on player count: werewolves = max(2, n // 6); Seer fro
 
 **Roles:** Werewolf (kills at night, knows its teammates), Villager, Seer (inspects one player per night and remembers the results), Guard (protects one player per night, never the same one twice in a row), Witch (one healing and one poison potion for the whole game), Hunter (shoots someone when killed). Cupid and Little Girl were removed: they were never implemented.
 
-**Known limitations** (tracked as GitHub issues): only one werewolf decides the night kill; a single global game is shared by all clients; the API blocks while the LLM is working.
+**Known limitations** (tracked as GitHub issues): only one werewolf decides the night kill; the API blocks while the LLM is working.
 
 ## Requirements
 
@@ -76,19 +76,21 @@ The `.env` file must be in the project root.
 
 ## API
 
+Each game has its own id, so several games can run at once. Idle games are removed after `SESSION_TTL_MINUTES` and at most `MAX_SESSIONS` exist (the least recently used one is dropped).
+
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/api/game/create` | JSON body `{"num_players": 8, "ai_provider": null}` |
-| POST | `/api/game/start` | start the first night |
-| POST | `/api/game/next-phase` | run the current phase and move on |
-| GET | `/api/game/state` | phase, day, players, last 20 log lines |
-| GET | `/api/players` | player profiles |
+| POST | `/api/games` | create a game, body `{"num_players": 8, "ai_provider": null}`; returns `game_id` |
+| GET | `/api/games/{id}` | phase, day, players, last 20 log lines |
+| POST | `/api/games/{id}/start` | start the first night |
+| POST | `/api/games/{id}/next-phase` | run the current phase and move on (409 if one is already running) |
+| GET | `/api/games/{id}/players` | player profiles |
+| DELETE | `/api/games/{id}` | delete the game |
 | GET | `/api/providers` | configured AI providers |
-| WS | `/ws` | currently only echoes messages |
+| WS | `/ws/{id}` | events of one game (`phase_change`); currently also echoes messages |
 
 ```bash
-curl -X POST http://localhost:8000/api/game/create \
-  -H "Content-Type: application/json" -d '{"num_players": 8}'
+curl -X POST http://localhost:8000/api/games   -H "Content-Type: application/json" -d '{"num_players": 8}'
 ```
 
 ## Project layout

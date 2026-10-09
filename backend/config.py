@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     # only visible for eliminated players.
     reveal_roles: bool = False
 
+    # Several games can run at once; idle ones are removed
+    max_sessions: int = Field(20, ge=1)
+    session_ttl_minutes: float = Field(120, gt=0)
+
     # --- Server -----------------------------------------------------------
     host: str = "0.0.0.0"
     port: int = 8000

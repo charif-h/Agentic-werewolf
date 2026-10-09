@@ -10,6 +10,7 @@ import backend.main as main
 from backend.agents.ai_provider import AIProvider
 from backend.config import Settings
 from backend.models.game_models import PlayerStatus
+from backend.services.sessions import SessionManager
 
 
 class FakeLLM:
@@ -19,7 +20,7 @@ class FakeLLM:
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(main, "game", None)
+    monkeypatch.setattr(main, "sessions", SessionManager())
     monkeypatch.setattr("backend.game.game_logic.time.sleep", lambda s: None)
     with patch.object(AIProvider, "get_llm", return_value=FakeLLM()):
         yield TestClient(main.app, raise_server_exceptions=False)
@@ -30,21 +31,28 @@ def settings(**overrides):
 
 
 def create(client, **body):
-    return client.post("/api/game/create", json=body)
+    response = client.post("/api/games", json=body)
+    client.game_id = response.json().get("game_id")   # id of the most recent game
+    return response
+
+
+def game_of(client):
+    return main.sessions.get(client.game_id).game
 
 
 def test_roles_are_hidden_for_living_players(client):
     assert create(client, num_players=8).status_code == 200
-    for url in ("/api/game/state", "/api/players"):
+    gid = client.game_id
+    for url in (f"/api/games/{gid}", f"/api/games/{gid}/players"):
         data = client.get(url).json()
         assert all(p["role"] is None for p in data["players"]), url
 
 
 def test_roles_of_dead_players_are_revealed(client):
     create(client, num_players=8)
-    dead = main.game.state.players[0]
+    dead = game_of(client).state.players[0]
     dead.status = PlayerStatus.DEAD
-    players = {p["id"]: p for p in client.get("/api/players").json()["players"]}
+    players = {p["id"]: p for p in client.get(f"/api/games/{client.game_id}/players").json()["players"]}
     assert players[dead.id]["role"] == dead.role.value
     assert all(p["role"] is None for pid, p in players.items() if pid != dead.id)
 
@@ -52,13 +60,14 @@ def test_roles_of_dead_players_are_revealed(client):
 def test_reveal_roles_setting_shows_everything(client, monkeypatch):
     create(client, num_players=8)
     monkeypatch.setattr(main, "get_settings", lambda: settings(reveal_roles=True))
-    assert all(p["role"] for p in client.get("/api/players").json()["players"])
+    assert all(p["role"] for p in client.get(f"/api/games/{client.game_id}/players").json()["players"])
 
 
 def test_night_results_do_not_leak_guard_or_seer_information(client):
     create(client, num_players=10)
-    client.post("/api/game/start")
-    data = client.post("/api/game/next-phase").json()["data"]
+    gid = client.game_id
+    client.post(f"/api/games/{gid}/start")
+    data = client.post(f"/api/games/{gid}/next-phase").json()["data"]
     assert set(data["night_results"]) == {"deaths"}
 
 
@@ -72,9 +81,10 @@ def test_errors_do_not_expose_internal_details(client):
 
 def test_next_phase_error_is_generic(client):
     create(client, num_players=8)
+    gid = client.game_id
     with patch("backend.main.WerewolfGame.process_night_actions", side_effect=RuntimeError("secret")):
-        client.post("/api/game/start")
-        response = client.post("/api/game/next-phase")
+        client.post(f"/api/games/{gid}/start")
+        response = client.post(f"/api/games/{gid}/next-phase")
     assert response.status_code == 500
     assert "secret" not in response.text
 
@@ -91,7 +101,7 @@ def test_player_count_is_clamped_to_the_configured_range(client):
 
 def test_cors_only_allows_configured_origins(client):
     def preflight(origin):
-        return client.options("/api/game/create", headers={
+        return client.options("/api/games", headers={
             "Origin": origin, "Access-Control-Request-Method": "POST",
         })
 
