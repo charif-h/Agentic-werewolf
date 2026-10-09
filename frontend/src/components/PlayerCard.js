@@ -4,7 +4,7 @@ const PlayerCard = ({ player }) => {
   const isDead = player.status === 'dead';
 
   const getRoleDisplay = (role) => {
-    if (!role) return 'Role not assigned';
+    if (!role) return '🎭 Hidden';
     
     const roleDisplayMap = {
       'werewolf': '🐺 Werewolf',

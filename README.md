@@ -12,7 +12,7 @@ An AI-driven version of *The Werewolves of Millers Hollow*. Every player is an L
 
 Role distribution depends on player count: werewolves = max(2, n // 6); Seer from 8 players, Witch from 10, Hunter from 12, Cupid from 14, Guard from 16; the rest are villagers.
 
-**Known limitations** (tracked as GitHub issues): Witch, Hunter and Cupid have no in-game effect yet; only one werewolf decides the night kill; a single global game is shared by all clients; the API blocks while the LLM is working; the API returns every player's role.
+**Known limitations** (tracked as GitHub issues): Witch, Hunter and Cupid have no in-game effect yet; only one werewolf decides the night kill; a single global game is shared by all clients; the API blocks while the LLM is working.
 
 ## Requirements
 
@@ -66,6 +66,7 @@ All settings live in `backend/config.py` and can be set in `.env` or as environm
 | `OPENAI_MODEL`, `GEMINI_MODEL`, `MISTRAL_MODEL` | `gpt-4`, `gemini-2.5-pro`, `mistral-small-latest` | model names |
 | `DEFAULT_PLAYERS`, `MIN_PLAYERS`, `MAX_PLAYERS` | 8, 4, 12 | player count (requests are clamped to the min/max) |
 | `DISCUSSION_MAX_ROUNDS` | 5 | maximum discussion rounds |
+| `REVEAL_ROLES` | `false` | show every role in the API (debug); by default only dead players' roles are visible |
 | `CORS_ORIGINS` | `["http://localhost:3000"]` | allowed frontend origins (JSON list) |
 | `REACT_APP_API_URL` | `http://localhost:8000` | backend URL used by the frontend |
 
@@ -109,7 +110,7 @@ See [docs/architecture.md](docs/architecture.md) and [docs/security.md](docs/sec
 ## Tests
 
 ```bash
-pip install pytest
+pip install -r backend/requirements-dev.txt
 python -m pytest tests
 ```
 
