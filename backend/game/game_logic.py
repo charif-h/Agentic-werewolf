@@ -1,6 +1,7 @@
 """
 Game Logic for Werewolves of Millers Hollow
 """
+import logging
 import random
 import time
 from datetime import datetime
@@ -11,6 +12,10 @@ from backend.models.game_models import (
 from backend.agents.profile_generator import generate_all_players
 from backend.agents.player_agent import PlayerAgent
 from backend.agents.game_master_agent import GameMasterAgent
+from backend.game.targets import pick_target
+
+
+logger = logging.getLogger(__name__)
 
 
 class WerewolfGame:
@@ -152,8 +157,9 @@ class WerewolfGame:
                 werewolf_game_state['valid_targets'] = [p.name for p in non_werewolf_targets]
                 
                 # Simplified: first werewolf chooses (in full implementation, they'd coordinate)
-                victim_name = self.player_agents[werewolves[0].id].night_action(werewolf_game_state)
-                victim = self._find_player_by_name(victim_name)
+                victim = self._choose_night_target(
+                    werewolves[0], werewolf_game_state, werewolf_game_state['valid_targets']
+                )
                 
                 # Ensure the victim is not a werewolf
                 if victim and victim.role != Role.WEREWOLF:
@@ -165,20 +171,20 @@ class WerewolfGame:
         # Guard protects someone
         guards = [p for p in alive_players if p.role == Role.GUARD]
         if guards:
-            protected_name = self.player_agents[guards[0].id].night_action(
-                self._get_game_state_dict()
-            )
-            protected = self._find_player_by_name(protected_name)
+            guard_state = self._get_game_state_dict()
+            guard_targets = [p.name for p in alive_players]
+            guard_state['valid_targets'] = guard_targets
+            protected = self._choose_night_target(guards[0], guard_state, guard_targets)
             if protected:
                 results['protected'] = protected.id
         
         # Seer checks someone
         seers = [p for p in alive_players if p.role == Role.SEER]
         if seers:
-            check_name = self.player_agents[seers[0].id].night_action(
-                self._get_game_state_dict()
-            )
-            checked = self._find_player_by_name(check_name)
+            seer_state = self._get_game_state_dict()
+            seer_targets = [p.name for p in alive_players if p.id != seers[0].id]
+            seer_state['valid_targets'] = seer_targets
+            checked = self._choose_night_target(seers[0], seer_state, seer_targets)
             if checked:
                 results['seer_check'] = {
                     'player': checked.name,
@@ -203,6 +209,21 @@ class WerewolfGame:
         
         self.state.night_actions = results
         return results
+    
+    def _choose_night_target(self, actor: PlayerProfile, game_state: Dict[str, any],
+                             valid_names: List[str]) -> Optional[PlayerProfile]:
+        """
+        Ask a player's agent for a night target and map the answer to a valid player.
+        Unclear answers or LLM errors fall back to a random valid target.
+        """
+        if not valid_names:
+            return None
+        try:
+            answer = self.player_agents[actor.id].night_action(game_state)
+        except Exception as e:
+            logger.warning("Night action failed for %s: %s", actor.name, e)
+            answer = None
+        return self._find_player_by_name(pick_target(answer, valid_names))
     
     def start_day(self) -> str:
         """
@@ -506,6 +527,8 @@ class WerewolfGame:
     
     def _find_player_by_name(self, name: str) -> Optional[PlayerProfile]:
         """Find player by name"""
+        if not name:
+            return None
         for player in self.state.players:
             if player.name.lower() == name.lower():
                 return player
