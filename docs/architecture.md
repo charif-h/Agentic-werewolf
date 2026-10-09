@@ -23,6 +23,7 @@ State lives in memory: one `WerewolfGame` per session, kept in a `SessionManager
 | `backend/agents/player_agent.py` | `PlayerAgent`: one per player. Builds the persona prompt from profile + role and exposes `night_action`, `discuss`, `vote`. Keeps its own short message memory. |
 | `backend/game/game_master.py` | `GameMaster`: template announcements (night, day, elimination, winner) and the rule that decides when discussion ends. No LLM calls. |
 | `backend/agents/profile_generator.py` | Random unique names, sex, age (18-80), MBTI personality. |
+| `backend/llm/` | The `LLMClient` interface (`generate(messages, max_tokens, temperature, json_schema) -> str`), `Message`, a scripted `FakeLLMClient` for tests, and `LangChainClient`, an adapter for the cloud providers. `WerewolfGame` creates **one** client and all players share it; agents receive it in their constructor. |
 | `backend/agents/ai_provider.py` | `AIProvider.get_llm()`: factory returning a LangChain chat model for OpenAI, Gemini or Mistral. |
 | `backend/models/game_models.py` | Pydantic models and enums: `PlayerProfile`, `GameState`, `Discussion`, `Message`, `Role`, `GamePhase`, `PlayerStatus`, `PersonalityType`, `Sex`. |
 

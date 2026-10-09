@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import backend.main as main
-from backend.agents.ai_provider import AIProvider
+from backend.llm import FakeLLMClient
 from backend.api import state
 from backend.game.game_logic import WerewolfGame
 from backend.models.game_models import GamePhase
@@ -16,10 +16,9 @@ from backend.services.phases import TRANSITIONS, advance_phase
 from backend.services.sessions import SessionManager
 
 
-class TalkativeLLM:
+def talkative_llm():
     """Everybody always answers with a short sentence naming Bob"""
-    def invoke(self, messages):
-        return SimpleNamespace(content="Bob looks odd.")
+    return FakeLLMClient("Bob looks odd.")
 
 
 class BlockingLLM:
@@ -28,17 +27,17 @@ class BlockingLLM:
         self.entered = threading.Event()
         self.release = threading.Event()
 
-    def invoke(self, messages):
+    def generate(self, messages, **options):
         self.entered.set()
         self.release.wait(10)
-        return SimpleNamespace(content="Bob")
+        return "Bob"
 
 
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr(state, "sessions", SessionManager())
     monkeypatch.setattr("backend.game.game_logic.time.sleep", lambda s: None)
-    with patch.object(AIProvider, "get_llm", return_value=TalkativeLLM()):
+    with patch("backend.game.game_logic.create_llm_client", return_value=talkative_llm()):
         # the context manager keeps ONE event loop for all requests, like a real server
         with TestClient(main.app) as test_client:
             yield test_client

@@ -1,6 +1,5 @@
 """Game sessions: several independent games, ids, expiry, per-game WebSocket (fake LLM)."""
 import random
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,13 +7,12 @@ from fastapi.testclient import TestClient
 
 import backend.main as main
 from backend.api import state
-from backend.agents.ai_provider import AIProvider
+from backend.llm import FakeLLMClient
 from backend.services.sessions import SessionManager, SessionNotFound
 
 
-class FakeLLM:
-    def invoke(self, messages):
-        return SimpleNamespace(content=random.choice(["no comment", "Hmm.", "Bob"]))
+def fake_llm():
+    return FakeLLMClient(lambda messages: random.choice(["no comment", "Hmm.", "Bob"]))
 
 
 class Clock:
@@ -97,7 +95,7 @@ def test_least_recently_used_session_is_dropped_when_full():
 def client(monkeypatch):
     monkeypatch.setattr(state, "sessions", SessionManager())
     monkeypatch.setattr("backend.game.game_logic.time.sleep", lambda s: None)
-    with patch.object(AIProvider, "get_llm", return_value=FakeLLM()):
+    with patch("backend.game.game_logic.create_llm_client", return_value=fake_llm()):
         yield TestClient(main.app, raise_server_exceptions=False)
 
 
