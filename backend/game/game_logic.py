@@ -380,44 +380,24 @@ class WerewolfGame:
                 agent = self.player_agents[player.id]
                 vote_target = agent.vote(full_conversation, candidate_names)
                 
-                # Validate vote target
-                if vote_target in candidate_names:
-                    target_player = self._find_player_by_name(vote_target)
-                    if target_player and target_player.status == PlayerStatus.ALIVE:
-                        votes[vote_target].append(player.name)
-                        self.state.game_log.append(f"[VOTE] {player.name} votes to eliminate {vote_target}")
-                    else:
-                        # Invalid target, use fallback
-                        fallback_target = candidate_names[0] if candidate_names else None
-                        if fallback_target:
-                            votes[fallback_target].append(player.name)
-                            self.state.game_log.append(f"[VOTE] {player.name} votes for {fallback_target} (invalid target corrected)")
+                # Validate vote target (must be an alive player other than the voter)
+                target_player = self._find_player_by_name(vote_target)
+                if (target_player and target_player.status == PlayerStatus.ALIVE
+                        and target_player.name != player.name):
+                    votes[target_player.name].append(player.name)
+                    self.state.game_log.append(f"[VOTE] {player.name} votes to eliminate {target_player.name}")
                 else:
-                    # Vote parsing failed, use fallback
-                    fallback_target = candidate_names[0] if candidate_names else None
-                    if fallback_target:
-                        votes[fallback_target].append(player.name)
-                        self.state.game_log.append(f"[VOTE] {player.name} votes for {fallback_target} (vote parsing failed)")
+                    self._cast_fallback_vote(votes, player.name, candidate_names, "invalid target corrected")
                         
             except Exception as e:
                 error_msg = str(e).lower()
                 if "rate limit" in error_msg or "429" in error_msg:
                     print(f"Rate limit hit during voting for {player.name}")
-                    # Use strategic fallback vote during rate limits
-                    if candidate_names:
-                        # Prefer to vote for someone other than self
-                        other_candidates = [c for c in candidate_names if c != player.name]
-                        fallback_target = random.choice(other_candidates) if other_candidates else candidate_names[0]
-                        votes[fallback_target].append(player.name)
-                        self.state.game_log.append(f"[VOTE] {player.name} votes for {fallback_target} (rate limited)")
+                    self._cast_fallback_vote(votes, player.name, candidate_names, "rate limited")
                     time.sleep(1)  # Extra delay after rate limit
                 else:
                     print(f"Voting error for {player.name}: {e}")
-                    # Error fallback
-                    if candidate_names:
-                        fallback_target = candidate_names[0]
-                        votes[fallback_target].append(player.name)
-                        self.state.game_log.append(f"[VOTE] {player.name} votes for {fallback_target} (error fallback)")
+                    self._cast_fallback_vote(votes, player.name, candidate_names, "error fallback")
         
         # Count votes and determine elimination
         vote_counts = {name: len(voters) for name, voters in votes.items()}
@@ -445,6 +425,16 @@ class WerewolfGame:
                 return eliminated_player, vote_counts
         
         return None, vote_counts
+    
+    def _cast_fallback_vote(self, votes: Dict[str, List[str]], voter: str,
+                            candidate_names: List[str], reason: str) -> None:
+        """Cast a random vote for a candidate other than the voter"""
+        others = [c for c in candidate_names if c != voter]
+        if not others:
+            return
+        target = random.choice(others)
+        votes[target].append(voter)
+        self.state.game_log.append(f"[VOTE] {voter} votes for {target} ({reason})")
     
     def check_win_condition(self) -> Optional[str]:
         """

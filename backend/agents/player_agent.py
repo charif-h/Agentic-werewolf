@@ -1,6 +1,7 @@
 """
 Player AI Agent - Controls individual player behavior
 """
+import random
 from typing import Optional, Dict, Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from backend.models.game_models import PlayerProfile, Role
@@ -145,51 +146,6 @@ Current Action: {context}
                 # For other errors, re-raise
                 raise e
     
-    def vote(self, game_state: Dict[str, Any], candidates: list[str]) -> str:
-        """
-        Make a voting decision
-        
-        Args:
-            game_state: Current game state
-            candidates: List of player names that can be voted for
-            
-        Returns:
-            Name of the player to vote for
-        """
-        # Build voting context with discussion analysis
-        discussion_analysis = ""
-        all_discussions = game_state.get('all_discussions', [])
-        if all_discussions:
-            discussion_analysis = "\n\nAnalysis from Recent Discussions:\n"
-            for discussion in all_discussions[-2:]:  # Last 2 discussion rounds
-                discussion_analysis += f"Round {discussion['round']}: {discussion['topic']}\n"
-                for msg in discussion['messages']:
-                    discussion_analysis += f"  - {msg['sender']}: {msg['content']}\n"
-        
-        context = f"""It's time to vote. You must choose one player to eliminate from these candidates:
-{', '.join(candidates)}
-
-Based on the discussions, evidence, your role, and what you've observed, who do you vote to eliminate?
-{discussion_analysis}
-
-Consider:
-- Who seemed most suspicious in discussions?
-- Who deflected questions or seemed nervous?
-- Who made accusations that didn't make sense?
-- Your role's specific knowledge (if any)
-
-Respond with ONLY the name of the player you're voting for, nothing else."""
-        
-        response = self.get_action(game_state, context)
-        
-        # Extract the name from response
-        for candidate in candidates:
-            if candidate.lower() in response.lower():
-                return candidate
-        
-        # Default to first candidate if unclear
-        return candidates[0] if candidates else ""
-    
     def night_action(self, game_state: Dict[str, Any]) -> Optional[str]:
         """
         Perform night action based on role
@@ -329,6 +285,9 @@ Do you want to respond to the current conversation?"""
         
         context = f"""You are {self.profile.name} voting to eliminate someone.
 
+YOUR HIDDEN INFO: You are a {self.profile.role.value}
+{role_voting_strategy}
+
 CONVERSATION RECAP:
 {conversation_history if conversation_history.strip() else "No discussion took place."}
 
@@ -359,12 +318,11 @@ Who do you vote to eliminate?"""
                 if player.lower() in response.lower():
                     return player
             
-            # Fallback to first available player
-            return other_players[0]
+            # Unclear answer: random valid candidate (avoids bias toward the first player)
+            return random.choice(other_players)
             
         except Exception:
             # Random vote as fallback to ensure independence
-            import random
             return random.choice(other_players)
     
     def _get_role_strategy(self) -> str:
