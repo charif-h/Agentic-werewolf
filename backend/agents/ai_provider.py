@@ -1,76 +1,75 @@
 """
 AI Provider configuration and LLM initialization
 """
-import os
 from typing import Optional
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_mistralai import ChatMistralAI
-from dotenv import load_dotenv
 
-load_dotenv()
+from backend.config import get_settings
 
 
 class AIProvider:
     """Factory for creating AI language models"""
-    
+
     @staticmethod
-    def get_llm(provider: Optional[str] = None, temperature: float = 0.7):
+    def get_llm(provider: Optional[str] = None, temperature: Optional[float] = None):
         """
         Get an LLM instance based on the provider
-        
+
         Args:
-            provider: AI provider name (openai, gemini, mistral). 
-                     If None, uses AI_PROVIDER from env
-            temperature: Temperature for response generation (0.0 to 1.0)
-            
+            provider: AI provider name (openai, gemini, mistral).
+                     If None, uses AI_PROVIDER from the settings
+            temperature: Temperature for response generation (0.0 to 1.0).
+                     If None, uses PLAYER_TEMPERATURE from the settings
+
         Returns:
             LangChain LLM instance
         """
-        if provider is None:
-            provider = os.getenv("AI_PROVIDER", "openai").lower()
-        
+        settings = get_settings()
+        provider = (provider or settings.ai_provider).lower()
+        if temperature is None:
+            temperature = settings.player_temperature
+
         if provider == "openai":
-            api_key = os.getenv("OPENAI_API_KEY")
-            if not api_key:
+            if not settings.openai_api_key:
                 raise ValueError("OPENAI_API_KEY not found in environment")
             return ChatOpenAI(
-                model="gpt-4",
+                model=settings.openai_model,
                 temperature=temperature,
-                api_key=api_key
+                api_key=settings.openai_api_key
             )
-        
+
         elif provider == "gemini":
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if not api_key:
+            if not settings.google_api_key:
                 raise ValueError("GOOGLE_API_KEY not found in environment")
             return ChatGoogleGenerativeAI(
-                model="gemini-2.5-pro",
+                model=settings.gemini_model,
                 temperature=temperature,
-                google_api_key=api_key
+                google_api_key=settings.google_api_key
             )
-        
+
         elif provider == "mistral":
-            api_key = os.getenv("MISTRAL_API_KEY")
-            if not api_key:
+            if not settings.mistral_api_key:
                 raise ValueError("MISTRAL_API_KEY not found in environment")
             return ChatMistralAI(
-                model="mistral-small-latest",
+                model=settings.mistral_model,
                 temperature=temperature,
-                mistral_api_key=api_key
+                mistral_api_key=settings.mistral_api_key
             )
-        
+
         else:
             raise ValueError(f"Unknown AI provider: {provider}")
-    
+
     @staticmethod
     def get_available_providers() -> list[str]:
         """Get list of configured AI providers"""
+        settings = get_settings()
         providers = []
-        if os.getenv("OPENAI_API_KEY"):
+        if settings.openai_api_key:
             providers.append("openai")
-        if os.getenv("GOOGLE_API_KEY"):
+        if settings.google_api_key:
             providers.append("gemini")
-        if os.getenv("MISTRAL_API_KEY"):
+        if settings.mistral_api_key:
             providers.append("mistral")
         return providers
