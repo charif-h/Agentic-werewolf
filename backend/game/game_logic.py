@@ -11,6 +11,7 @@ import time
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from backend.engine import rules
+from backend.roles import WEREWOLVES, get_handler, night_handlers
 from backend.models.game_models import (
     PlayerProfile, GameState, GamePhase, Role, Discussion, Message
 )
@@ -73,7 +74,7 @@ class WerewolfGame:
         announcement = self.game_master.announce_night(self.state.day_number)
         self.state.game_log.append(f"[GAME MASTER] {announcement}")
 
-        if any(p.role == Role.WEREWOLF for p in rules.alive_players(self.state)):
+        if any(get_handler(p.role).team == WEREWOLVES for p in rules.alive_players(self.state)):
             werewolf_announcement = self.game_master.announce_werewolf_awakening()
             self.state.game_log.append(f"[GAME MASTER] {werewolf_announcement}")
 
@@ -87,18 +88,16 @@ class WerewolfGame:
             Dictionary of night results (see `rules.resolve_night`)
         """
         alive = rules.alive_players(self.state)
-        by_role = {role: next((p for p in alive if p.role == role), None)
-                   for role in (Role.WEREWOLF, Role.GUARD, Role.SEER)}
+        targets: Dict[Role, Optional[PlayerProfile]] = {}
+        for handler in night_handlers():
+            # Simplified: the first alive player of the role acts (werewolves would coordinate)
+            actor = next((p for p in alive if p.role == handler.role), None)
+            targets[handler.role] = self._choose_night_target(actor)
+            if targets[handler.role] and handler.announce_night_choice:
+                decision = self.game_master.announce_werewolf_decision()
+                self.state.game_log.append(f"[GAME MASTER] {decision}")
 
-        # Simplified: the first werewolf chooses (in a full game they would coordinate)
-        victim = self._choose_night_target(by_role[Role.WEREWOLF])
-        if victim:
-            werewolf_decision = self.game_master.announce_werewolf_decision()
-            self.state.game_log.append(f"[GAME MASTER] {werewolf_decision}")
-        protected = self._choose_night_target(by_role[Role.GUARD])
-        seer_target = self._choose_night_target(by_role[Role.SEER])
-
-        return rules.resolve_night(self.state, victim, protected, seer_target)
+        return rules.resolve_night(self.state, targets)
 
     def _choose_night_target(self, actor: Optional[PlayerProfile]) -> Optional[PlayerProfile]:
         """

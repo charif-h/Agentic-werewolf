@@ -14,6 +14,7 @@ State lives in memory in one global `WerewolfGame` instance. There is no databas
 | Module | Role |
 |---|---|
 | `backend/main.py` | REST endpoints, `ConnectionManager` for WebSocket broadcast, CORS. Each endpoint calls `WerewolfGame` synchronously. |
+| `backend/roles/` | One module per role, registered in a registry (`get_handler(role)`). A `RoleHandler` holds the team, the prompts (description, discussion/voting strategy), and the night action (order, valid targets, what it records). Adding a role means adding one file. |
 | `backend/engine/rules.py` | Pure rules, no LLM or I/O: role distribution, valid night targets, night resolution (kill, guard, seer, lovers), vote tally, win condition. Randomness is injectable (`random.Random`), so a full game can run in a unit test. |
 | `backend/game/game_logic.py` | `WerewolfGame` orchestrator: asks player agents for decisions (LLM), passes them to the engine, writes the game log. Also runs the discussion rounds. |
 | `backend/agents/player_agent.py` | `PlayerAgent`: one per player. Builds the persona prompt from profile + role and exposes `night_action`, `discuss`, `vote`. Keeps its own short message memory. |

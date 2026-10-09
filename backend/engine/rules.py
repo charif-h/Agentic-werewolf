@@ -10,9 +10,7 @@ import random
 from typing import Dict, List, Optional, Tuple
 
 from backend.models.game_models import GamePhase, GameState, PlayerProfile, PlayerStatus, Role
-
-WEREWOLVES = "werewolves"
-VILLAGERS = "villagers"
+from backend.roles import VILLAGERS, WEREWOLVES, get_handler, night_handlers
 
 
 # --- Setup -----------------------------------------------------------------
@@ -77,19 +75,12 @@ def start_night(state: GameState) -> None:
 
 def valid_night_targets(state: GameState, actor: PlayerProfile) -> List[str]:
     """
-    Names `actor` may target tonight
+    Names `actor` may target tonight, as defined by their role handler
 
     Werewolves: alive non-werewolves. Guard: any alive player (self included).
     Seer: any alive player except self. Other roles have no night target.
     """
-    alive = alive_players(state)
-    if actor.role == Role.WEREWOLF:
-        return [p.name for p in alive if p.role != Role.WEREWOLF]
-    if actor.role == Role.GUARD:
-        return [p.name for p in alive]
-    if actor.role == Role.SEER:
-        return [p.name for p in alive if p.id != actor.id]
-    return []
+    return get_handler(actor.role).night_targets(state, actor)
 
 
 def kill_player(state: GameState, player: PlayerProfile) -> List[PlayerProfile]:
@@ -111,16 +102,14 @@ def kill_player(state: GameState, player: PlayerProfile) -> List[PlayerProfile]:
     return died
 
 
-def resolve_night(state: GameState, victim: Optional[PlayerProfile],
-                  protected: Optional[PlayerProfile],
-                  seer_target: Optional[PlayerProfile]) -> Dict:
+def resolve_night(state: GameState, targets: Dict[Role, Optional[PlayerProfile]]) -> Dict:
     """
     Apply the night's actions and store them in `state.night_actions`
 
     Args:
-        victim: Player chosen by the werewolves
-        protected: Player protected by the guard
-        seer_target: Player inspected by the seer
+        targets: Role -> player chosen by that role tonight (missing or None
+            when the role did not act). Each role handler records its own
+            choice; the kill is applied unless the victim is protected.
 
     Returns:
         Dict with 'killed', 'protected' (player ids), 'seer_check'
@@ -128,15 +117,18 @@ def resolve_night(state: GameState, victim: Optional[PlayerProfile],
         died with the victim, 'lover_died' (player id)
     """
     results = {
-        'killed': victim.id if victim and victim.role != Role.WEREWOLF else None,
-        'protected': protected.id if protected else None,
-        'seer_check': ({'player': seer_target.name, 'role': seer_target.role.value}
-                       if seer_target else None),
+        'killed': None,
+        'protected': None,
+        'seer_check': None,
         'witch_saved': False,
         'witch_killed': None,
     }
+    for handler in night_handlers():
+        target = targets.get(handler.role)
+        if target:
+            handler.record_night(results, target)
     if results['killed'] and results['killed'] != results['protected']:
-        died = kill_player(state, victim)
+        died = kill_player(state, find_player_by_id(state, results['killed']))
         if len(died) > 1:
             results['lover_died'] = died[1].id
     state.night_actions = results
@@ -200,7 +192,7 @@ def resolve_vote(state: GameState, votes: Dict[str, str],
 def check_win_condition(state: GameState) -> Optional[str]:
     """'villagers' if no werewolf is left, 'werewolves' if they are at least half, else None"""
     alive = alive_players(state)
-    wolves = sum(1 for p in alive if p.role == Role.WEREWOLF)
+    wolves = sum(1 for p in alive if get_handler(p.role).team == WEREWOLVES)
     if wolves == 0:
         return VILLAGERS
     if wolves >= len(alive) - wolves:

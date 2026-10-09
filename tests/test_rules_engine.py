@@ -84,7 +84,7 @@ def test_start_night_increments_day_and_clears_actions():
 
 def test_resolve_night_kills_victim():
     state = make_state([Role.WEREWOLF, Role.VILLAGER, Role.SEER])
-    results = rules.resolve_night(state, by_name(state, "P1"), None, by_name(state, "P0"))
+    results = rules.resolve_night(state, {Role.WEREWOLF: by_name(state, "P1"), Role.SEER: by_name(state, "P0")})
     assert results['killed'] == "p1"
     assert by_name(state, "P1").status == PlayerStatus.DEAD
     assert state.eliminated_players == ["p1"]
@@ -96,7 +96,7 @@ def test_resolve_night_kills_victim():
 def test_resolve_night_guard_saves_victim():
     state = make_state([Role.WEREWOLF, Role.VILLAGER, Role.GUARD])
     victim = by_name(state, "P1")
-    results = rules.resolve_night(state, victim, victim, None)
+    results = rules.resolve_night(state, {Role.WEREWOLF: victim, Role.GUARD: victim})
     assert victim.status == PlayerStatus.ALIVE
     assert state.eliminated_players == []
     assert results['killed'] == "p1" and results['protected'] == "p1"
@@ -105,14 +105,14 @@ def test_resolve_night_guard_saves_victim():
 
 def test_resolve_night_guard_protecting_someone_else_does_not_save_victim():
     state = make_state([Role.WEREWOLF, Role.VILLAGER, Role.GUARD])
-    rules.resolve_night(state, by_name(state, "P1"), by_name(state, "P2"), None)
+    rules.resolve_night(state, {Role.WEREWOLF: by_name(state, "P1"), Role.GUARD: by_name(state, "P2")})
     assert by_name(state, "P1").status == PlayerStatus.DEAD
 
 
 def test_resolve_night_ignores_werewolf_victim_and_no_victim():
     state = make_state([Role.WEREWOLF, Role.WEREWOLF, Role.VILLAGER])
-    assert rules.resolve_night(state, by_name(state, "P1"), None, None)['killed'] is None
-    assert rules.resolve_night(state, None, None, None)['killed'] is None
+    assert rules.resolve_night(state, {Role.WEREWOLF: by_name(state, "P1")})['killed'] is None
+    assert rules.resolve_night(state, {})['killed'] is None
     assert all(p.status == PlayerStatus.ALIVE for p in state.players)
 
 
@@ -120,7 +120,7 @@ def test_lovers_die_together():
     state = make_state([Role.WEREWOLF, Role.VILLAGER, Role.VILLAGER, Role.SEER])
     by_name(state, "P1").in_love_with = "p2"
     by_name(state, "P2").in_love_with = "p1"
-    results = rules.resolve_night(state, by_name(state, "P1"), None, None)
+    results = rules.resolve_night(state, {Role.WEREWOLF: by_name(state, "P1")})
     assert results['lover_died'] == "p2"
     assert by_name(state, "P2").status == PlayerStatus.DEAD
     assert rules.describe_night(state) == "P1 was killed. P2 died of heartbreak."
@@ -212,7 +212,7 @@ def play_random_game(num_players, seed):
         for role, actor in actors.items():
             names = rules.valid_night_targets(state, actor) if actor else []
             picks[role] = by_name(state, rng.choice(names)) if names else None
-        rules.resolve_night(state, picks[Role.WEREWOLF], picks[Role.GUARD], picks[Role.SEER])
+        rules.resolve_night(state, picks)
         if rules.check_win_condition(state):
             continue
         candidates = [p.name for p in rules.alive_players(state)]
