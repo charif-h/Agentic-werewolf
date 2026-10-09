@@ -1,9 +1,9 @@
 """
 Game Master AI Agent - Controls the game flow and narration
 """
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 from langchain_core.messages import HumanMessage, SystemMessage
-from backend.models.game_models import GamePhase, GameState, PlayerProfile
+from backend.models.game_models import GameState, PlayerProfile
 from backend.agents.ai_provider import AIProvider
 
 

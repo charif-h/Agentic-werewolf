@@ -4,14 +4,11 @@ FastAPI Backend for Werewolves of Millers Hollow
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from typing import Dict, List, Optional
+from typing import List, Optional
 import json
-import asyncio
-from datetime import datetime
 from pydantic import BaseModel
 
 from backend.game.game_logic import WerewolfGame
-from backend.models.game_models import GameState, Message, PlayerProfile
 from backend.agents.ai_provider import AIProvider
 
 app = FastAPI(title="Werewolves of Millers Hollow API")
@@ -27,7 +24,6 @@ app.add_middleware(
 
 # Global game instance
 game: Optional[WerewolfGame] = None
-active_connections: List[WebSocket] = []
 
 
 class ConnectionManager:

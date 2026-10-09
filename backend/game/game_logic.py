@@ -2,6 +2,8 @@
 Game Logic for Werewolves of Millers Hollow
 """
 import random
+import time
+from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from backend.models.game_models import (
     PlayerProfile, GameState, GamePhase, Role, PlayerStatus, Discussion, Message
@@ -255,9 +257,6 @@ class WerewolfGame:
             messages=[]
         )
         
-        import time
-        import random
-        
         for discussion_round in range(1, max_rounds + 1):
             round_had_new_speech = False
             
@@ -286,7 +285,6 @@ class WerewolfGame:
                         round_had_new_speech = True
                         
                         # Add to structured discussion
-                        from datetime import datetime
                         message = Message(
                             sender=player.name,
                             content=comment,
@@ -371,9 +369,6 @@ class WerewolfGame:
             full_conversation = "No discussion took place this phase."
         
         # Each player makes independent voting decision
-        import time
-        import random
-        
         # Shuffle voting order to prevent influence
         shuffled_voters = alive_players.copy()
         random.shuffle(shuffled_voters)

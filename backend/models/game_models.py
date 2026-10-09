@@ -55,7 +55,6 @@ class GamePhase(str, Enum):
 class PlayerStatus(str, Enum):
     ALIVE = "alive"
     DEAD = "dead"
-    IN_LOVE = "in_love"
 
 
 class PlayerProfile(BaseModel):
@@ -114,6 +113,5 @@ class GameState(BaseModel):
     players: List[PlayerProfile] = []
     eliminated_players: List[str] = []  # Player IDs
     night_actions: dict = {}
-    voting_results: dict = {}
     game_log: List[str] = []
     discussions: List[Discussion] = []  # Store all discussions for context

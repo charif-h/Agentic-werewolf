@@ -2,9 +2,8 @@
 Player AI Agent - Controls individual player behavior
 """
 from typing import Optional, Dict, Any
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage, SystemMessage
-from backend.models.game_models import PlayerProfile, GamePhase, Role
+from backend.models.game_models import PlayerProfile, Role
 from backend.agents.ai_provider import AIProvider
 
 
@@ -109,7 +108,7 @@ Your personality influences how you:
         discussion_context = ""
         discussion_history = game_state.get('discussion_history', [])
         if discussion_history:
-            discussion_context = f"\nRecent Discussions:\n" + "\n".join(discussion_history[-10:])  # Last 10 messages
+            discussion_context = "\nRecent Discussions:\n" + "\n".join(discussion_history[-10:])  # Last 10 messages
         
         # Build comprehensive game context
         game_context = f"""
@@ -267,7 +266,7 @@ Do you want to respond to the current conversation?"""
             
             return response
             
-        except Exception as e:
+        except Exception:
             # Fallback based on role if API fails
             if self.profile.role == Role.WEREWOLF:
                 return "no comment"  # Werewolves tend to stay quiet
@@ -363,7 +362,7 @@ Who do you vote to eliminate?"""
             # Fallback to first available player
             return other_players[0]
             
-        except Exception as e:
+        except Exception:
             # Random vote as fallback to ensure independence
             import random
             return random.choice(other_players)

@@ -15,12 +15,6 @@ MALE_NAMES = [
     "Adnan", "Faris", "Jamal", "Nabil", "Sami", "Amir", "Bilal", "Hadi", "Chan"
 ]
 
-NON_BINARY_NAMES = [
-    "Alex", "Jordan", "Taylor", "Casey", "Morgan", "Riley", "Avery", "Quinn",
-    "Dakota", "Skylar", "Parker", "Cameron", "River", "Phoenix", "Sage", "Rowan",
-    "Drew", "Blake", "Jamie", "Pat", "Sam", "Chris", "Robin", "Ash", "Lou"
-]
-
 FEMALE_NAMES = [
     "Mary", "Patricia", "Jennifer", "Linda", "Elizabeth", "Barbara", "Susan", "Jessica",
     "Sarah", "Karen", "Nancy", "Lisa", "Betty", "Margaret", "Sandra", "Ashley",
@@ -46,37 +40,25 @@ def generate_player_profile(player_id: str, used_names: set) -> PlayerProfile:
     # Randomly select sex
     sex = random.choice(list(Sex))
     
-    # Select appropriate name based on sex, ensuring uniqueness
-    available_names = []
-    if sex == Sex.MALE:
-        available_names = [name for name in MALE_NAMES if name not in used_names]
-    elif sex == Sex.FEMALE:
-        available_names = [name for name in FEMALE_NAMES if name not in used_names]
-    else:
-        available_names = [name for name in NON_BINARY_NAMES if name not in used_names]
+    # Select a name matching the sex, ensuring uniqueness
+    sex_names = MALE_NAMES if sex == Sex.MALE else FEMALE_NAMES
+    available_names = [name for name in sex_names if name not in used_names]
     
-    # If no available names for this sex, try other categories
+    # If no available names for this sex, try the other list
     if not available_names:
-        all_names = MALE_NAMES + FEMALE_NAMES + NON_BINARY_NAMES
+        all_names = MALE_NAMES + FEMALE_NAMES
         available_names = [name for name in all_names if name not in used_names]
     
-    # If still no available names, add suffix
-    if not available_names:
-        if sex == Sex.MALE:
-            base_name = random.choice(MALE_NAMES)
-        elif sex == Sex.FEMALE:
-            base_name = random.choice(FEMALE_NAMES)
-        else:
-            base_name = random.choice(NON_BINARY_NAMES)
-        
-        # Add suffix until unique
+    if available_names:
+        name = random.choice(available_names)
+    else:
+        # All names used: add a numeric suffix until unique
+        base_name = random.choice(sex_names)
         counter = 1
         name = f"{base_name}{counter}"
         while name in used_names:
             counter += 1
             name = f"{base_name}{counter}"
-    else:
-        name = random.choice(available_names)
     
     # Add name to used set
     used_names.add(name)
