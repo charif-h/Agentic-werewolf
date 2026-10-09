@@ -1,7 +1,7 @@
 """Helpers to turn free-text LLM answers into valid player names"""
 import random
 import re
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Tuple
 
 
 def match_player_name(text: Optional[str], candidates: Iterable[str]) -> Optional[str]:
@@ -40,3 +40,24 @@ def pick_target(text: Optional[str], candidates: Iterable[str]) -> Optional[str]
     if not candidates:
         return None
     return match_player_name(text, candidates) or random.choice(candidates)
+
+
+def parse_witch_answer(text: Optional[str], can_save: bool, can_poison: bool,
+                       poison_targets: Iterable[str]) -> Tuple[bool, Optional[str]]:
+    """
+    Read the witch's free-text decision
+
+    Expected answers: "SAVE", "POISON <name>", "SAVE and POISON <name>" or "PASS".
+    Anything unclear means doing nothing (no random potion use).
+
+    Returns:
+        (use the heal potion, name of the player to poison or None)
+    """
+    if not isinstance(text, str) or not text:
+        return False, None
+    save = bool(can_save and re.search(r"\b(save|heal)\b", text, re.IGNORECASE))
+    poison = None
+    found = re.search(r"\bpoison\b", text, re.IGNORECASE) if can_poison else None
+    if found:
+        poison = match_player_name(text[found.end():], poison_targets)
+    return save, poison

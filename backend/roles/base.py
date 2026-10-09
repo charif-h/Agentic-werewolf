@@ -45,6 +45,10 @@ class RoleHandler:
     night_constraint: str = ""       # extra rule appended to the prompt
     announce_night_choice: bool = False  # Game Master announces that a choice was made
 
+    # Death shot (hunter): when the player dies they immediately eliminate someone
+    death_shot: bool = False
+    death_shot_instruction: str = ""
+
     @property
     def acts_at_night(self) -> bool:
         return self.night_order is not None

@@ -32,9 +32,17 @@ def personality_behavior(personality: str) -> str:
     return PERSONALITY_BEHAVIOR.get(personality, "neutral")
 
 
+def knowledge_block(knowledge: Optional[List[str]]) -> str:
+    """Secret facts the player learned during the game ('' when there are none)"""
+    if not knowledge:
+        return ""
+    return "\nWHAT YOU KNOW (secret):\n" + "\n".join(f"- {fact}" for fact in knowledge) + "\n"
+
+
 def player_system_prompt(name: str, age: int, sex: str, personality: str,
                          personality_description: str,
-                         role_description: Optional[str] = None) -> str:
+                         role_description: Optional[str] = None,
+                         knowledge: Optional[List[str]] = None) -> str:
     """Full persona prompt used for night actions and general actions"""
     prompt = f"""You are {name}, a {age}-year-old {sex}{" "}
 playing The Werewolves of Millers Hollow.
@@ -49,6 +57,8 @@ Your personality influences how you:
 """
     if role_description:
         prompt += f"\n\nYour Role: {role_description}"
+    if knowledge:
+        prompt += "\n" + knowledge_block(knowledge)
     prompt += "\n\nPlay authentically according to your personality and role. Stay in character."
     return prompt
 
@@ -102,7 +112,8 @@ def response_factors(name: str, conversation: str, role_hint: str) -> str:
 
 
 def discussion_prompt(name: str, conversation: str, alive_names: List[str], role: str,
-                      role_strategy: str, factors: str) -> str:
+                      role_strategy: str, factors: str,
+                      knowledge: Optional[List[str]] = None) -> str:
     """Ask a player whether and what to say in the discussion"""
     return f"""You are {name} in a Werewolf game discussion.
 
@@ -113,7 +124,7 @@ ALIVE PLAYERS: {', '.join(alive_names)}
 
 YOUR HIDDEN INFO: You are a {role}
 {role_strategy}
-
+{knowledge_block(knowledge)}
 RESPONSE FACTORS:
 {factors}
 
@@ -128,13 +139,13 @@ Do you want to respond to the current conversation?"""
 
 
 def vote_prompt(name: str, role: str, voting_strategy: str, conversation: str,
-                candidates: List[str]) -> str:
+                candidates: List[str], knowledge: Optional[List[str]] = None) -> str:
     """Ask a player who to vote for"""
     return f"""You are {name} voting to eliminate someone.
 
 YOUR HIDDEN INFO: You are a {role}
 {voting_strategy}
-
+{knowledge_block(knowledge)}
 CONVERSATION RECAP:
 {conversation if conversation.strip() else "No discussion took place."}
 
@@ -148,3 +159,25 @@ INSTRUCTIONS:
 - Respond with ONLY the player's name
 
 Who do you vote to eliminate?"""
+
+
+def witch_prompt(victim: Optional[str], can_save: bool, can_poison: bool,
+                 poison_targets: List[str]) -> str:
+    """Ask the witch what she does tonight"""
+    lines = [f"As the witch, the werewolves attacked {victim} tonight." if victim
+             else "As the witch, nobody was attacked tonight."]
+    options = []
+    if can_save:
+        options.append("SAVE (use your healing potion on the victim)")
+    if can_poison:
+        options.append(f"POISON <name> (kill one player among: {', '.join(poison_targets)})")
+    options.append("PASS (do nothing)")
+    lines.append("Your options: " + "; ".join(options) + ".")
+    lines.append("Answer with exactly one of: " + ", ".join(
+        (["SAVE"] if can_save else []) + (["POISON <name>"] if can_poison else []) + ["PASS"]) + ".")
+    return " ".join(lines)
+
+
+def hunter_prompt(instruction: str, targets: List[str]) -> str:
+    """Ask the dying hunter who to shoot"""
+    return f"{instruction} from these players: {', '.join(targets)}. Respond with ONLY the player's name."

@@ -20,12 +20,11 @@ def distribute_roles(num_players: int) -> List[Role]:
     List of roles for a game of `num_players` (unshuffled)
 
     Werewolves are max(2, n // 6). Special roles are added as the player count
-    grows: Seer from 8, Witch from 10, Hunter from 12, Cupid from 14, Guard
-    from 16. The rest are villagers.
+    grows: Seer from 8, Witch from 10, Hunter from 12 and Guard from 16. The rest are villagers.
     """
     roles = [Role.WEREWOLF] * max(2, num_players // 6)
     for minimum, role in [(8, Role.SEER), (10, Role.WITCH), (12, Role.HUNTER),
-                          (14, Role.CUPID), (16, Role.GUARD)]:
+                          (16, Role.GUARD)]:
         if num_players >= minimum:
             roles.append(role)
     roles.extend([Role.VILLAGER] * (num_players - len(roles)))
@@ -85,24 +84,37 @@ def valid_night_targets(state: GameState, actor: PlayerProfile) -> List[str]:
 
 def kill_player(state: GameState, player: PlayerProfile) -> List[PlayerProfile]:
     """
-    Kill a player; a lover dies of heartbreak with them
+    Kill a player
 
     Returns:
-        Everyone who died because of this call (empty if already dead)
+        [player] if they were alive, otherwise an empty list
     """
     if player.status == PlayerStatus.DEAD:
         return []
     player.status = PlayerStatus.DEAD
     state.eliminated_players.append(player.id)
-    died = [player]
-    if player.in_love_with:
-        lover = find_player_by_id(state, player.in_love_with)
-        if lover and lover.status == PlayerStatus.ALIVE:
-            died += kill_player(state, lover)
-    return died
+    return [player]
 
 
-def resolve_night(state: GameState, targets: Dict[Role, Optional[PlayerProfile]]) -> Dict:
+def witch_options(state: GameState, victim: Optional[PlayerProfile]) -> Dict:
+    """
+    What the witch can do tonight
+
+    Returns:
+        {'can_save': bool, 'can_poison': bool, 'poison_targets': [names]}.
+        She can only save a victim who would really die, and each potion is
+        usable once per game.
+    """
+    return {
+        'can_save': (not state.witch_heal_used) and victim is not None,
+        'can_poison': not state.witch_poison_used,
+        'poison_targets': [p.name for p in alive_players(state) if p.role != Role.WITCH],
+    }
+
+
+def resolve_night(state: GameState, targets: Dict[Role, Optional[PlayerProfile]],
+                  witch_save: bool = False,
+                  witch_poison: Optional[PlayerProfile] = None) -> Dict:
     """
     Apply the night's actions and store them in `state.night_actions`
 
@@ -110,11 +122,17 @@ def resolve_night(state: GameState, targets: Dict[Role, Optional[PlayerProfile]]
         targets: Role -> player chosen by that role tonight (missing or None
             when the role did not act). Each role handler records its own
             choice; the kill is applied unless the victim is protected.
+        witch_save: The witch uses her heal potion on the werewolves' victim
+            (ignored if already used, if there is no victim, or if the guard
+            already protects the victim)
+        witch_poison: Player the witch poisons (ignored if the potion was used
+            or the player is already dead)
 
     Returns:
-        Dict with 'killed', 'protected' (player ids), 'seer_check'
-        ({'player', 'role'}), 'witch_saved', 'witch_killed' and, when a lover
-        died with the victim, 'lover_died' (player id)
+        Dict with 'killed' (the werewolves' victim, even if saved), 'protected'
+        (player ids), 'seer_check' ({'player', 'role'}), 'witch_saved',
+        'witch_killed' (player id), 'deaths' (ids of everyone who died tonight,
+        in order) and 'hunter_shots' (filled in later by the game)
     """
     results = {
         'killed': None,
@@ -122,15 +140,27 @@ def resolve_night(state: GameState, targets: Dict[Role, Optional[PlayerProfile]]
         'seer_check': None,
         'witch_saved': False,
         'witch_killed': None,
+        'deaths': [],
+        'hunter_shots': [],
     }
     for handler in night_handlers():
         target = targets.get(handler.role)
         if target:
             handler.record_night(results, target)
-    if results['killed'] and results['killed'] != results['protected']:
-        died = kill_player(state, find_player_by_id(state, results['killed']))
-        if len(died) > 1:
-            results['lover_died'] = died[1].id
+    state.guard_last_protected = results['protected']
+
+    victim = find_player_by_id(state, results['killed']) if results['killed'] else None
+    victim_dies = victim is not None and results['killed'] != results['protected']
+    if witch_save and victim_dies and not state.witch_heal_used:
+        state.witch_heal_used = True
+        results['witch_saved'] = True
+        victim_dies = False
+    if victim_dies:
+        results['deaths'] += [p.id for p in kill_player(state, victim)]
+    if witch_poison and not state.witch_poison_used and witch_poison.status == PlayerStatus.ALIVE:
+        state.witch_poison_used = True
+        results['witch_killed'] = witch_poison.id
+        results['deaths'] += [p.id for p in kill_player(state, witch_poison)]
     state.night_actions = results
     return results
 
@@ -139,16 +169,32 @@ def describe_night(state: GameState) -> str:
     """Public summary of last night's deaths, e.g. 'Bob was killed.'"""
     results = state.night_actions
     events = []
-    victim = find_player_by_id(state, results['killed']) if results.get('killed') else None
-    if victim and victim.status == PlayerStatus.DEAD:
-        events.append(f"{victim.name} was killed")
-        lover = (find_player_by_id(state, results['lover_died'])
-                 if results.get('lover_died') else None)
-        if lover:
-            events.append(f"{lover.name} died of heartbreak")
-    else:
-        events.append("No one was killed")
-    return ". ".join(events) + "."
+    for player_id in results.get('deaths', []):
+        victim = find_player_by_id(state, player_id)
+        if victim:
+            events.append(f"{victim.name} was killed")
+    for hunter_id, target_id in results.get('hunter_shots', []):
+        hunter, target = find_player_by_id(state, hunter_id), find_player_by_id(state, target_id)
+        if hunter and target:
+            events.append(f"{hunter.name} was the hunter and shot {target.name}")
+    return (". ".join(events) if events else "No one was killed") + "."
+
+
+# --- Hunter ------------------------------------------------------------------
+
+def dead_hunters(died: List[PlayerProfile]) -> List[PlayerProfile]:
+    """Players among `died` whose role gets a death shot (the hunter)"""
+    return [p for p in died if get_handler(p.role).death_shot]
+
+
+def hunter_targets(state: GameState) -> List[str]:
+    """Names the hunter can shoot: any living player"""
+    return [p.name for p in alive_players(state)]
+
+
+def hunter_shoot(state: GameState, target: PlayerProfile) -> List[PlayerProfile]:
+    """The hunter kills `target`; returns who died (empty if already dead)"""
+    return kill_player(state, target)
 
 
 # --- Day: voting -----------------------------------------------------------

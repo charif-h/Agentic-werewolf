@@ -21,6 +21,7 @@ def make_agent(role=Role.SEER, answer="Bob"):
     agent.profile = PlayerProfile(id="p", name="Ann", sex=Sex.FEMALE, age=30,
                                   personality=PersonalityType.INTJ, role=role)
     agent.memory = []
+    agent.knowledge = []
     agent.llm = RecordingLLM(answer)
     return agent
 

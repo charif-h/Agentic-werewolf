@@ -2,7 +2,7 @@
 Player AI Agent - Controls individual player behavior
 """
 import random
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from langchain_core.messages import HumanMessage, SystemMessage
 from backend.models.game_models import PlayerProfile
 from backend.agents.ai_provider import AIProvider
@@ -26,6 +26,7 @@ class PlayerAgent:
         self.profile = profile
         self.llm = AIProvider.get_llm(provider=ai_provider)
         self.memory = []  # Store conversation history
+        self.knowledge: List[str] = []  # Secret facts learned during the game
         
     @property
     def handler(self):
@@ -39,6 +40,7 @@ class PlayerAgent:
             profile.name, profile.age, profile.sex.value, profile.personality.value,
             profile.get_personality_description(),
             self.handler.description if profile.role else None,
+            self.knowledge,
         )
 
     def _prepare_messages(self, system_prompt: str, user_message: str) -> list:
@@ -133,6 +135,21 @@ class PlayerAgent:
         context = self.handler.night_prompt(game_state.get('valid_targets', []))
         return self.get_action(game_state, context)
     
+    def add_knowledge(self, fact: str) -> None:
+        """Remember a secret fact (e.g. the seer's findings); it appears in later prompts"""
+        self.knowledge.append(fact)
+
+    def witch_action(self, game_state: Dict[str, Any], victim: Optional[str], can_save: bool,
+                     can_poison: bool, poison_targets: List[str]) -> str:
+        """Ask the witch what she does tonight (raw answer, parsed by the game)"""
+        context = prompts.witch_prompt(victim, can_save, can_poison, poison_targets)
+        return self.get_action(game_state, context)
+
+    def hunter_shot(self, game_state: Dict[str, Any], targets: List[str]) -> str:
+        """Ask the dying hunter whom to shoot (raw answer, parsed by the game)"""
+        context = prompts.hunter_prompt(self.handler.death_shot_instruction, targets)
+        return self.get_action(game_state, context)
+
     def discuss(self, conversation_history: str, alive_players: list[str]) -> str:
         """
         Generate a strategic comment based on conversation history and role
@@ -148,6 +165,7 @@ class PlayerAgent:
             self.profile.name, conversation_history, alive_players, self.profile.role.value,
             self.handler.discussion_strategy,
             self._should_respond_to_conversation(conversation_history),
+            self.knowledge,
         )
 
         try:
@@ -196,7 +214,7 @@ class PlayerAgent:
         
         context = prompts.vote_prompt(
             self.profile.name, self.profile.role.value, self.handler.voting_strategy,
-            conversation_history, other_players,
+            conversation_history, other_players, self.knowledge,
         )
 
         try:

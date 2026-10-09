@@ -17,6 +17,7 @@ def make_agent(answer, role=Role.WEREWOLF):
         personality=PersonalityType.INTJ, role=role,
     )
     agent.memory = []
+    agent.knowledge = []
     agent.llm = MagicMock()
     if isinstance(answer, Exception):
         agent.llm.invoke.side_effect = answer

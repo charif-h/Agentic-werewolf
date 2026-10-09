@@ -59,7 +59,7 @@ def test_night_results_do_not_leak_guard_or_seer_information(client):
     create(client, num_players=10)
     client.post("/api/game/start")
     data = client.post("/api/game/next-phase").json()["data"]
-    assert set(data["night_results"]) == {"killed"}
+    assert set(data["night_results"]) == {"deaths"}
 
 
 def test_errors_do_not_expose_internal_details(client):
