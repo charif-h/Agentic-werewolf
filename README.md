@@ -2,7 +2,7 @@
 
 An AI-driven version of *The Werewolves of Millers Hollow*. Every player is an LLM agent with a random profile (name, sex, age, one of the 16 MBTI personalities) and a secret role. A rule-based Game Master (templates, no LLM) narrates. You watch the game in a React UI.
 
-> **Status:** prototype. It runs on cloud LLM APIs today. A move to a local Gemma model is planned (see the open issues and milestones on GitHub).
+> **Status:** prototype. Every player runs on a **local Gemma model** through [Ollama](https://ollama.com): no API key, no cloud, nothing leaves your machine.
 
 ## How it works
 
@@ -20,7 +20,7 @@ Role distribution depends on player count: werewolves = max(2, n // 6); Seer fro
 
 - Python 3.11+
 - Node.js 18+
-- An API key for at least one of OpenAI, Google Gemini or Mistral
+- [Ollama](https://ollama.com) with the `gemma3:4b` model (3.3 GB download, about 4 GB of GPU memory; a GPU is strongly recommended)
 - Docker + Docker Compose (optional)
 
 ## Quick start
@@ -28,7 +28,8 @@ Role distribution depends on player count: werewolves = max(2, n // 6); Seer fro
 ```bash
 git clone https://github.com/charif-h/Agentic-werewolf.git
 cd Agentic-werewolf
-cp .env.example .env        # then edit .env: add a key and set AI_PROVIDER
+cp .env.example .env        # optional: every setting has a default
+ollama pull gemma3:4b       # the local model
 ```
 
 ### With Docker
@@ -63,9 +64,10 @@ All settings live in `backend/config.py` and can be set in `.env` or as environm
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AI_PROVIDER` | `openai` | `openai`, `gemini` or `mistral` |
-| `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY` | | key for the chosen provider |
-| `OPENAI_MODEL`, `GEMINI_MODEL`, `MISTRAL_MODEL` | `gpt-4`, `gemini-2.5-pro`, `mistral-small-latest` | model names |
+| `OLLAMA_HOST` | `http://localhost:11434` | where Ollama runs |
+| `LLM_MODEL` | `gemma3:4b` | model tag (`gemma3:1b` is a smaller fallback) |
+| `LLM_TEMPERATURE`, `LLM_MAX_TOKENS` | 0.8, 256 | sampling temperature, longest answer |
+| `LLM_NUM_CTX`, `LLM_KEEP_ALIVE`, `LLM_TIMEOUT` | 4096, `30m`, 120 | context window, how long the model stays loaded, seconds per answer |
 | `DEFAULT_PLAYERS`, `MIN_PLAYERS`, `MAX_PLAYERS` | 8, 4, 12 | player count (requests are clamped to the min/max) |
 | `DISCUSSION_MAX_ROUNDS` | 5 | maximum discussion rounds |
 | `REVEAL_ROLES` | `false` | show every role in the API (debug); by default only dead players' roles are visible |
@@ -80,13 +82,13 @@ Each game has its own id, so several games can run at once. Idle games are remov
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/api/games` | create a game, body `{"num_players": 8, "ai_provider": null}`; returns `game_id` |
+| POST | `/api/games` | create a game, body `{"num_players": 8}`; returns `game_id` |
 | GET | `/api/games/{id}` | phase, day, players, last 20 log lines |
 | POST | `/api/games/{id}/start` | start the first night |
 | POST | `/api/games/{id}/next-phase` | run the current phase and move on; waits for the result, or answers 202 at once with `?background=true` (409 if a phase is already running) |
 | GET | `/api/games/{id}/players` | player profiles |
 | DELETE | `/api/games/{id}` | delete the game |
-| GET | `/api/providers` | configured AI providers |
+| GET | `/api/model` | local model status: Ollama reachable? model installed? |
 | WS | `/ws/{id}` | live events of one game: `player_spoke`, `vote_cast`, `phase_change`, `error` (messages you send are echoed) |
 | GET | `/api/health` | liveness check and number of running games |
 
@@ -99,7 +101,7 @@ curl -X POST http://localhost:8000/api/games   -H "Content-Type: application/jso
 ```
 backend/
   main.py                 FastAPI app: middleware and routers
-  llm/                    LLMClient interface, fake client for tests, LangChain adapter
+  llm/                    LLMClient interface, Ollama client, fake client for tests
   prompts/                prompt templates sent to the LLM (player.py)
   roles/                  one module per role (team, prompts, night action); add a role = add a file
   engine/rules.py         pure game rules (roles, night, voting, win condition): no LLM, no I/O
@@ -107,7 +109,7 @@ backend/
   api/                    FastAPI routers (games, players, health, websocket), serializers, error handler
   services/               sessions (several games) and the phase state machine
   game/game_master.py     template-based Game Master (no LLM)
-  agents/                 player_agent, profile_generator, ai_provider
+  agents/                 player_agent, profile_generator
   models/game_models.py   Pydantic models and enums
 frontend/src/             React app (App.js, components/, services/api.js)
 tests/                    pytest tests (no LLM needed)
@@ -125,11 +127,12 @@ python -m pytest tests
 
 ## Troubleshooting
 
-- **"... API_KEY not found in environment"**: `.env` is missing, not in the project root, or `AI_PROVIDER` does not match the key you set.
+- **"Cannot reach Ollama" / "Ollama is not running"**: start Ollama (on Windows it runs in the tray after installation) and check `OLLAMA_HOST`. `GET /api/model` shows the status.
+- **"Model ... is not installed"**: run `ollama pull gemma3:4b` (or the model set in `LLM_MODEL`).
+- **The first answer takes a minute**: the model is being loaded into memory; later answers take well under a second.
 - **Python import errors**: run uvicorn from the project root, as `python -m uvicorn backend.main:app`.
 - **Port in use**: change `--port` for uvicorn, or `PORT=3001 npm start` for the frontend.
 - **Frontend cannot reach the backend**: check that the backend is running and `REACT_APP_API_URL` is correct.
-- **429 / rate-limit messages**: the provider is throttling you; players fall back to default answers. Use fewer players.
 - **Docker build problems**: `docker-compose down` then `docker-compose up --build`.
 
 ## License

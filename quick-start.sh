@@ -17,10 +17,9 @@ if [ ! -f .env ]; then
     cp .env.example .env
     echo "✓ .env file created"
     echo ""
-    echo "⚠️  IMPORTANT: Edit .env and add your API keys before continuing!"
-    echo "   Required: At least one of OPENAI_API_KEY, GOOGLE_API_KEY, or MISTRAL_API_KEY"
+    echo "ℹ️  No API key is needed: the game uses a local model through Ollama."
+    echo "   Install Ollama (https://ollama.com), then run: ollama pull gemma3:4b"
     echo ""
-    read -p "Press Enter when you've added your API keys..."
 fi
 
 # Check Python version

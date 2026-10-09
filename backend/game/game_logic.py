@@ -7,7 +7,6 @@ game rules of its own.
 """
 import logging
 import random
-import time
 from datetime import datetime
 from typing import Callable, List, Dict, Optional, Tuple
 from backend.config import get_settings
@@ -30,18 +29,15 @@ logger = logging.getLogger(__name__)
 class WerewolfGame:
     """Runs a game by combining LLM player agents with the rules engine"""
 
-    def __init__(self, num_players: int = 24, ai_provider: Optional[str] = None,
-                 llm: Optional[LLMClient] = None):
+    def __init__(self, num_players: int = 24, llm: Optional[LLMClient] = None):
         """
         Initialize the game
 
         Args:
             num_players: Number of players (default 24)
-            ai_provider: AI provider to use for all agents (ignored if `llm` is given)
-            llm: Language-model client shared by all players (default: built from the settings)
+            llm: Language-model client shared by all players (default: the local Ollama model)
         """
         self.num_players = num_players
-        self.ai_provider = ai_provider
         self.llm = llm
         self.state = GameState()
         self.player_agents: Dict[str, PlayerAgent] = {}
@@ -67,7 +63,7 @@ class WerewolfGame:
             Initial game state
         """
         if self.llm is None:
-            self.llm = create_llm_client(self.ai_provider)
+            self.llm = create_llm_client()
         players = generate_all_players(self.num_players)
         rules.assign_roles(players)
 
@@ -292,7 +288,6 @@ class WerewolfGame:
                     agent = self.player_agents[player.id]
 
                     # Give each player the updated conversation to consider responding
-                    time.sleep(settings.discussion_delay)
                     comment = agent.discuss(current_conversation, alive_names)
 
                     # Filter out "no comment" responses
@@ -318,12 +313,8 @@ class WerewolfGame:
                         logger.info("Round %s: %s spoke", discussion_round, player.name)
 
                 except Exception as e:
-                    error_msg = str(e).lower()
-                    if "rate limit" in error_msg or "429" in error_msg:
-                        logger.warning("Rate limit hit for %s, they stay silent this round", player.name)
-                        time.sleep(settings.rate_limit_delay)  # Extra delay on rate limit
-                    else:
-                        logger.warning("Error with player %s: %s", player.name, e)
+                    # A player whose model call fails stays silent this round
+                    logger.warning("Error with player %s: %s", player.name, e)
                     continue
 
             # Rule-based Game Master decides whether to play another round
@@ -333,9 +324,6 @@ class WerewolfGame:
                 end_announcement = self.game_master.announce_discussion_end()
                 self.state.game_log.append(f"[GAME MASTER] {end_announcement}")
                 break
-
-            # Shorter delay between rounds for more dynamic feel
-            time.sleep(settings.round_delay)
 
         # Save discussion to game state
         if discussion.messages:
@@ -374,8 +362,6 @@ class WerewolfGame:
         for player in shuffled_voters:
             reason = None
             try:
-                time.sleep(get_settings().vote_delay)
-
                 vote_target = self.player_agents[player.id].vote(full_conversation, candidate_names)
                 target = rules.find_player_by_name(self.state, vote_target)
                 if target and target.name in candidate_names and target.name != player.name:
@@ -385,14 +371,8 @@ class WerewolfGame:
                 else:
                     reason = "invalid target corrected"
             except Exception as e:
-                error_msg = str(e).lower()
-                if "rate limit" in error_msg or "429" in error_msg:
-                    logger.warning("Rate limit hit during voting for %s", player.name)
-                    reason = "rate limited"
-                    time.sleep(get_settings().rate_limit_delay)  # Extra delay after rate limit
-                else:
-                    logger.warning("Voting error for %s: %s", player.name, e)
-                    reason = "error fallback"
+                logger.warning("Voting error for %s: %s", player.name, e)
+                reason = "error fallback"
 
             if reason:
                 target_name = rules.fallback_vote_target(player.name, candidate_names)

@@ -23,7 +23,6 @@ class Werewolf(RoleHandler):
 3. Anyone who has been suspicious of werewolves
 4. Avoid voting for fellow werewolves unless absolutely necessary"""
     response_hint = "- Consider if you need to deflect suspicion or redirect attention"
-    rate_limit_reply = "I'll stay quiet for now and observe."
 
     night_order = 10
     night_instruction = "As a werewolf, choose one villager to eliminate tonight"

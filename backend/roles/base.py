@@ -12,8 +12,6 @@ from backend.models.game_models import GameState, PlayerProfile, PlayerStatus, R
 WEREWOLVES = "werewolves"
 VILLAGERS = "villagers"
 
-DEFAULT_RATE_LIMIT_REPLY = "I'm still thinking about this situation."
-
 VILLAGE_DISCUSSION_STRATEGY = """Your goal: find and eliminate werewolves.
 - Ask probing questions
 - Point out suspicious behavior
@@ -37,7 +35,6 @@ class RoleHandler:
     discussion_strategy: str = VILLAGE_DISCUSSION_STRATEGY  # tips when speaking in the discussion
     voting_strategy: str = VILLAGE_VOTING_STRATEGY
     response_hint: str = ""          # extra line in the "should I speak?" factors
-    rate_limit_reply: str = DEFAULT_RATE_LIMIT_REPLY
 
     # Night action. `night_order` is None for roles that do not act at night.
     night_order: Optional[int] = None

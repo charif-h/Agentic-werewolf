@@ -188,7 +188,6 @@ def test_hunter_shot_survives_llm_error():
 
 def test_hunter_voted_out_shoots(monkeypatch):
     game = hunter_game()
-    monkeypatch.setattr("backend.game.game_logic.time.sleep", lambda s: None)
     for p in game.state.players:
         game.player_agents[p.id].vote.return_value = "Bob"
     game.player_agents[player(game, "Bob").id].vote.return_value = "Cy"

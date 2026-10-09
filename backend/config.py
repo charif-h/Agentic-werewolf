@@ -2,7 +2,7 @@
 Central configuration, read from environment variables and the project's `.env` file.
 
 Every value can be overridden with an environment variable of the same name
-(case-insensitive), e.g. `MAX_PLAYERS=10` or `AI_PROVIDER=gemini`.
+(case-insensitive), e.g. `MAX_PLAYERS=10` or `LLM_MODEL=gemma3:1b`.
 """
 from functools import lru_cache
 from pathlib import Path
@@ -18,15 +18,14 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=str(ENV_FILE), env_file_encoding="utf-8",
                                       extra="ignore")
 
-    # --- AI providers -----------------------------------------------------
-    ai_provider: str = "openai"
-    openai_api_key: Optional[str] = None
-    google_api_key: Optional[str] = None
-    mistral_api_key: Optional[str] = None
-    openai_model: str = "gpt-4"
-    gemini_model: str = "gemini-2.5-pro"
-    mistral_model: str = "mistral-small-latest"
-    player_temperature: float = Field(0.8, ge=0.0, le=2.0)
+    # --- Local language model (Ollama) -------------------------------------
+    ollama_host: str = "http://localhost:11434"
+    llm_model: str = "gemma3:4b"
+    llm_temperature: float = Field(0.8, ge=0.0, le=2.0)
+    llm_max_tokens: Optional[int] = Field(256, ge=1)   # longest answer
+    llm_num_ctx: int = Field(4096, ge=512)             # context window in tokens
+    llm_keep_alive: str = "30m"                        # how long the model stays loaded
+    llm_timeout: float = Field(120.0, gt=0)            # seconds per answer
 
     # --- Game -------------------------------------------------------------
     default_players: int = Field(8, ge=1)
@@ -35,12 +34,6 @@ class Settings(BaseSettings):
     discussion_max_rounds: int = Field(5, ge=1)
     memory_messages: int = Field(4, ge=0)          # past messages kept per player
     discussion_context_messages: int = Field(10, ge=0)  # discussion lines shown in a prompt
-
-    # Pauses (seconds) between LLM calls; meant for cloud rate limits
-    discussion_delay: float = Field(0.3, ge=0.0)
-    round_delay: float = Field(0.5, ge=0.0)
-    vote_delay: float = Field(0.5, ge=0.0)
-    rate_limit_delay: float = Field(1.0, ge=0.0)  # extra pause after a 429
 
     # Show every player's role in the API (debug / spectator). Off: roles are
     # only visible for eliminated players.

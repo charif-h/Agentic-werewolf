@@ -6,10 +6,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
-      - AI_PROVIDER=${AI_PROVIDER:-openai}
+      # Ollama running on the host machine (an ollama service is added in a later change)
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - LLM_MODEL=${LLM_MODEL:-gemma3:4b}
     volumes:
       - ./backend:/app/backend
     restart: unless-stopped
