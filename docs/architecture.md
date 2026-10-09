@@ -13,7 +13,9 @@ State lives in memory: one `WerewolfGame` per session, kept in a `SessionManager
 
 | Module | Role |
 |---|---|
-| `backend/main.py` | REST endpoints under `/api/games/{id}`, `ConnectionManager` for per-game WebSocket broadcast, CORS. Each endpoint calls `WerewolfGame` synchronously. |
+| `backend/main.py` | Builds the app: CORS, central error handler (generic 500, details only in the log), routers. |
+| `backend/api/` | Routers: `games` (create, state, start, next-phase), `players`, `health` (root, health, providers), `websocket` (`/ws/{id}`); `serializers` (what clients may see), `state` (sessions and WebSocket connections), `errors`. |
+| `backend/services/phases.py` | Phase state machine: a table from the current phase to the function that plays it (`advance_phase`). Blocking, so the API runs it in a worker thread (`asyncio.to_thread`). While it runs, `WerewolfGame.on_event` pushes `player_spoke` and `vote_cast` events to the game's WebSocket clients. |
 | `backend/prompts/` | Prompt templates for player agents as plain functions (persona, game context, discussion, vote). Role-specific text comes from the role handlers. |
 | `backend/roles/` | One module per role, registered in a registry (`get_handler(role)`). A `RoleHandler` holds the team, the prompts (description, discussion/voting strategy), and the night action (order, valid targets, what it records). Adding a role means adding one file. |
 | `backend/engine/rules.py` | Pure rules, no LLM or I/O: role distribution, valid night targets, night resolution (kill, guard, seer, witch potions), hunter death shot, vote tally, win condition. Randomness is injectable (`random.Random`), so a full game can run in a unit test. |
@@ -26,7 +28,7 @@ State lives in memory: one `WerewolfGame` per session, kept in a `SessionManager
 
 ## Phase flow
 
-`POST /api/game/next-phase` runs one step depending on `game.state.phase`:
+`POST /api/games/{id}/next-phase` runs one step depending on the game phase (see `services/phases.py`). It runs in a worker thread, so the server keeps answering other requests; add `?background=true` to get an immediate 202 and the result as a `phase_change` WebSocket event:
 
 | Current phase | What happens | Next |
 |---|---|---|
