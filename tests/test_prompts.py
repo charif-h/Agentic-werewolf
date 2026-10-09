@@ -1,29 +1,15 @@
 """Prompt templates: content checks and agent wiring (fake LLM)."""
-from types import SimpleNamespace
 
 from backend import prompts
 from backend.agents.player_agent import PlayerAgent
+from backend.llm import FakeLLMClient
 from backend.models.game_models import PersonalityType, PlayerProfile, Role, Sex
 
 
-class RecordingLLM:
-    def __init__(self, answer="Bob"):
-        self.answer = answer
-        self.calls = []
-
-    def invoke(self, messages):
-        self.calls.append(messages)
-        return SimpleNamespace(content=self.answer)
-
-
 def make_agent(role=Role.SEER, answer="Bob"):
-    agent = PlayerAgent.__new__(PlayerAgent)
-    agent.profile = PlayerProfile(id="p", name="Ann", sex=Sex.FEMALE, age=30,
-                                  personality=PersonalityType.INTJ, role=role)
-    agent.memory = []
-    agent.knowledge = []
-    agent.llm = RecordingLLM(answer)
-    return agent
+    profile = PlayerProfile(id="p", name="Ann", sex=Sex.FEMALE, age=30,
+                            personality=PersonalityType.INTJ, role=role)
+    return PlayerAgent(profile, FakeLLMClient(answer))
 
 
 def test_personality_behavior_covers_every_type():
@@ -67,7 +53,7 @@ def test_discussion_and_vote_prompts():
 def test_agent_sends_role_and_strategy_prompts_to_the_llm():
     agent = make_agent(Role.SEER)
     agent.discuss("[Bob] hello", ["Ann", "Bob"])
-    system, user = agent.llm.calls[0]
+    system, user = agent.llm.last_messages
     assert "Personality: INTJ - be independent and methodical" in system.content
     assert "You are a seer" in user.content
     assert agent.handler.discussion_strategy in user.content
@@ -76,6 +62,6 @@ def test_agent_sends_role_and_strategy_prompts_to_the_llm():
 def test_night_action_prompt_uses_system_persona_with_role():
     agent = make_agent(Role.SEER)
     agent.night_action({'valid_targets': ['Bob'], 'players': [], 'phase': 'night'})
-    system, user = agent.llm.calls[0]
+    system, user = agent.llm.last_messages
     assert "Your Role: You are the SEER." in system.content
     assert "from these players: Bob" in user.content

@@ -1,11 +1,10 @@
 """Witch, hunter, seer and werewolf knowledge as played by WerewolfGame (fake agents, no LLM)."""
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from backend import prompts
-from backend.agents.ai_provider import AIProvider
+from backend.llm import FakeLLMClient
 from backend.agents.player_agent import PlayerAgent
 from backend.game.game_logic import WerewolfGame
 from backend.game.targets import parse_witch_answer
@@ -139,13 +138,8 @@ def test_seer_learns_what_they_saw():
 
 
 def test_werewolves_learn_their_teammates_at_setup():
-    class Fake:
-        def invoke(self, messages):
-            return SimpleNamespace(content="x")
-
-    with patch.object(AIProvider, "get_llm", return_value=Fake()):
-        game = WerewolfGame(num_players=12)
-        game.setup_game()
+    game = WerewolfGame(num_players=12, llm=FakeLLMClient("x"))
+    game.setup_game()
     wolves = [p for p in game.state.players if p.role == Role.WEREWOLF]
     assert len(wolves) == 2
     for wolf in wolves:
@@ -245,17 +239,14 @@ def test_witch_and_hunter_prompts():
 
 
 def test_agent_remembers_facts_and_uses_them_in_every_prompt():
-    agent_ = PlayerAgent.__new__(PlayerAgent)
-    agent_.profile = PlayerProfile(id="p", name="Ann", sex=Sex.FEMALE, age=30,
-                                   personality=PersonalityType.INTJ, role=Role.SEER)
-    agent_.memory, agent_.knowledge = [], []
-    agent_.llm = MagicMock()
-    agent_.llm.invoke.return_value = SimpleNamespace(content="Bob")
+    profile = PlayerProfile(id="p", name="Ann", sex=Sex.FEMALE, age=30,
+                            personality=PersonalityType.INTJ, role=Role.SEER)
+    agent_ = PlayerAgent(profile, FakeLLMClient("Bob"))
     agent_.add_knowledge("Night 1: you saw that Bob is a werewolf.")
     agent_.discuss("[Bob] hi", ["Ann", "Bob"])
     agent_.vote("[Bob] hi", ["Ann", "Bob"])
     agent_.night_action({'valid_targets': ['Bob']})
-    discussion, vote, night = (call[0][0] for call in agent_.llm.invoke.call_args_list)
+    discussion, vote, night = (messages for messages, _ in agent_.llm.calls)
     assert "Bob is a werewolf" in discussion[-1].content
     assert "Bob is a werewolf" in vote[-1].content
     assert "Bob is a werewolf" in night[0].content   # system prompt

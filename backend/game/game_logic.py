@@ -20,6 +20,8 @@ from backend.agents.profile_generator import generate_all_players
 from backend.agents.player_agent import PlayerAgent
 from backend.game.game_master import GameMaster
 from backend.game.targets import parse_witch_answer, pick_target
+from backend.llm import LLMClient
+from backend.llm.factory import create_llm_client
 
 
 logger = logging.getLogger(__name__)
@@ -28,16 +30,19 @@ logger = logging.getLogger(__name__)
 class WerewolfGame:
     """Runs a game by combining LLM player agents with the rules engine"""
 
-    def __init__(self, num_players: int = 24, ai_provider: Optional[str] = None):
+    def __init__(self, num_players: int = 24, ai_provider: Optional[str] = None,
+                 llm: Optional[LLMClient] = None):
         """
         Initialize the game
 
         Args:
             num_players: Number of players (default 24)
-            ai_provider: AI provider to use for all agents
+            ai_provider: AI provider to use for all agents (ignored if `llm` is given)
+            llm: Language-model client shared by all players (default: built from the settings)
         """
         self.num_players = num_players
         self.ai_provider = ai_provider
+        self.llm = llm
         self.state = GameState()
         self.player_agents: Dict[str, PlayerAgent] = {}
         self.game_master = GameMaster()
@@ -61,11 +66,13 @@ class WerewolfGame:
         Returns:
             Initial game state
         """
+        if self.llm is None:
+            self.llm = create_llm_client(self.ai_provider)
         players = generate_all_players(self.num_players)
         rules.assign_roles(players)
 
         for player in players:
-            self.player_agents[player.id] = PlayerAgent(player, self.ai_provider)
+            self.player_agents[player.id] = PlayerAgent(player, self.llm)
 
         # Werewolves know who their teammates are
         wolves = [p for p in players if get_handler(p.role).team == WEREWOLVES]

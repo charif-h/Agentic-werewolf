@@ -1,9 +1,7 @@
 """Tests for PlayerAgent.vote and the game-level fallback vote (fake LLM, no network)."""
-from types import SimpleNamespace
-from unittest.mock import MagicMock
-
 from backend.agents.player_agent import PlayerAgent
 from backend.engine import rules
+from backend.llm import FakeLLMClient
 from backend.models.game_models import (
     PersonalityType, PlayerProfile, Role, Sex,
 )
@@ -11,19 +9,11 @@ from backend.models.game_models import (
 
 def make_agent(answer, role=Role.WEREWOLF):
     """PlayerAgent whose LLM returns `answer` (or raises if it is an Exception)."""
-    agent = PlayerAgent.__new__(PlayerAgent)
-    agent.profile = PlayerProfile(
+    profile = PlayerProfile(
         id="p1", name="Ann", sex=Sex.FEMALE, age=30,
         personality=PersonalityType.INTJ, role=role,
     )
-    agent.memory = []
-    agent.knowledge = []
-    agent.llm = MagicMock()
-    if isinstance(answer, Exception):
-        agent.llm.invoke.side_effect = answer
-    else:
-        agent.llm.invoke.return_value = SimpleNamespace(content=answer)
-    return agent
+    return PlayerAgent(profile, FakeLLMClient(answer))
 
 
 def test_single_vote_definition():
@@ -37,7 +27,7 @@ def test_vote_returns_named_candidate():
 def test_vote_prompt_contains_role_and_voting_strategy_and_excludes_self():
     agent = make_agent("Bob")
     agent.vote("talk", ["Ann", "Bob", "Cy"])
-    prompt = agent.llm.invoke.call_args[0][0][-1].content
+    prompt = agent.llm.last_messages[-1].content
     assert "You are a werewolf" in prompt
     assert "As a WEREWOLF, vote to eliminate" in prompt
     assert "VOTING CANDIDATES: Bob, Cy" in prompt

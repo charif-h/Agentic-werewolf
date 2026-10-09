@@ -99,6 +99,7 @@ curl -X POST http://localhost:8000/api/games   -H "Content-Type: application/jso
 ```
 backend/
   main.py                 FastAPI app: middleware and routers
+  llm/                    LLMClient interface, fake client for tests, LangChain adapter
   prompts/                prompt templates sent to the LLM (player.py)
   roles/                  one module per role (team, prompts, night action); add a role = add a file
   engine/rules.py         pure game rules (roles, night, voting, win condition): no LLM, no I/O
