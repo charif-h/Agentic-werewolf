@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     vote_delay: float = Field(0.5, ge=0.0)
     rate_limit_delay: float = Field(1.0, ge=0.0)  # extra pause after a 429
 
+    # Show every player's role in the API (debug / spectator). Off: roles are
+    # only visible for eliminated players.
+    reveal_roles: bool = False
+
     # --- Server -----------------------------------------------------------
     host: str = "0.0.0.0"
     port: int = 8000

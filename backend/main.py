@@ -6,12 +6,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import List, Optional
 import json
+import logging
 from pydantic import BaseModel, Field
 
 from backend.config import get_settings
 from backend.game.game_logic import WerewolfGame
 from backend.agents.ai_provider import AIProvider
-from backend.models.game_models import GamePhase
+from backend.models.game_models import GamePhase, PlayerProfile, PlayerStatus
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Werewolves of Millers Hollow API")
 
@@ -19,9 +22,9 @@ app = FastAPI(title="Werewolves of Millers Hollow API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,  # the API uses no cookies
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 # Global game instance
@@ -47,10 +50,47 @@ class ConnectionManager:
             try:
                 await connection.send_json(message)
             except Exception as e:
-                print(f"Error broadcasting: {e}")
+                logger.warning("Error broadcasting: %s", e)
 
 
 manager = ConnectionManager()
+
+
+def serialize_player(player: PlayerProfile, detailed: bool = False) -> dict:
+    """
+    Public view of a player. The role is only included when REVEAL_ROLES is on
+    or the player is dead, so the API does not spoil the game.
+    """
+    data = {
+        "id": player.id,
+        "name": player.name,
+        "sex": player.sex.value,
+        "age": player.age,
+        "personality": player.personality.value,
+        "status": player.status.value,
+        "role": None,
+    }
+    if detailed:
+        data["personality_description"] = player.get_personality_description()
+    if player.role and (get_settings().reveal_roles or player.status == PlayerStatus.DEAD):
+        data["role"] = player.role.value
+    return data
+
+
+def public_night_results(game: WerewolfGame, results: dict) -> dict:
+    """Night results safe to send to every client (no guard or seer information)"""
+    if get_settings().reveal_roles:
+        return results
+    killed = game.state.night_actions.get('killed')
+    victim = next((p for p in game.state.players if p.id == killed), None)
+    died = victim is not None and victim.status == PlayerStatus.DEAD
+    return {"killed": victim.name if died else None}
+
+
+def server_error(action: str) -> HTTPException:
+    """Log the active exception and return a generic 500 (no internal details)"""
+    logger.exception("Error while trying to %s", action)
+    return HTTPException(status_code=500, detail=f"Failed to {action}")
 
 
 @app.get("/")
@@ -76,7 +116,7 @@ async def get_providers():
 
 class GameRequest(BaseModel):
     """Request model for creating a game"""
-    num_players: int = Field(default_factory=lambda: get_settings().default_players)
+    num_players: int = Field(default_factory=lambda: get_settings().default_players, ge=1, le=1000)
     ai_provider: Optional[str] = None
 
 
@@ -102,17 +142,7 @@ async def create_game(request: GameRequest):
         await manager.broadcast({
             "type": "game_created",
             "data": {
-                "players": [
-                    {
-                        "id": p.id,
-                        "name": p.name,
-                        "sex": p.sex.value,
-                        "age": p.age,
-                        "personality": p.personality.value,
-                        "status": p.status.value
-                    }
-                    for p in state.players
-                ],
+                "players": [serialize_player(p) for p in state.players],
                 "phase": state.phase.value,
                 "log": state.game_log
             }
@@ -126,12 +156,8 @@ async def create_game(request: GameRequest):
                 "phase": state.phase.value
             }
         })
-    except Exception as e:
-        # Log the actual error for debugging
-        print(f"Error in create_game: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to create game: {str(e)}")
+    except Exception:
+        raise server_error("create game")
 
 
 @app.get("/api/game/state")
@@ -144,18 +170,7 @@ async def get_game_state():
     return {
         "phase": state.phase.value,
         "day_number": state.day_number,
-        "players": [
-            {
-                "id": p.id,
-                "name": p.name,
-                "sex": p.sex.value,
-                "age": p.age,
-                "personality": p.personality.value,
-                "role": p.role.value if p.role else None,
-                "status": p.status.value
-            }
-            for p in state.players
-        ],
+        "players": [serialize_player(p) for p in state.players],
         "game_log": state.game_log[-20:]  # Last 20 entries
     }
 
@@ -179,12 +194,8 @@ async def start_game():
         })
         
         return {"status": "success", "announcement": announcement}
-    except Exception as e:
-        # Log the actual error for debugging
-        print(f"Error in start_game: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to start game: {str(e)}")
+    except Exception:
+        raise server_error("start game")
 
 
 @app.post("/api/game/next-phase")
@@ -204,7 +215,7 @@ async def next_phase():
             result = {
                 "phase": "day",
                 "announcement": announcement,
-                "night_results": night_results
+                "night_results": public_night_results(game, night_results)
             }
         
         elif current_phase.value == "day":
@@ -267,12 +278,8 @@ async def next_phase():
         })
         
         return {"status": "success", "data": result}
-    except Exception as e:
-        # Log the actual error for debugging
-        print(f"Error in next_phase: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to progress to next phase: {str(e)}")
+    except Exception:
+        raise server_error("progress to the next phase")
 
 
 @app.get("/api/players")
@@ -282,19 +289,7 @@ async def get_players():
         raise HTTPException(status_code=404, detail="No active game")
     
     return {
-        "players": [
-            {
-                "id": p.id,
-                "name": p.name,
-                "sex": p.sex.value,
-                "age": p.age,
-                "personality": p.personality.value,
-                "personality_description": p.get_personality_description(),
-                "role": p.role.value if p.role else None,
-                "status": p.status.value
-            }
-            for p in game.state.players
-        ]
+        "players": [serialize_player(p, detailed=True) for p in game.state.players]
     }
 
 

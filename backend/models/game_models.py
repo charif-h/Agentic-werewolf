@@ -27,6 +27,7 @@ class PersonalityType(str, Enum):
 
 
 class Sex(str, Enum):
+    """Only these two values are supported (the name lists in the profile generator match)"""
     MALE = "male"
     FEMALE = "female"
 
@@ -103,15 +104,15 @@ class Discussion(BaseModel):
     """Discussion round with messages"""
     round_number: int
     topic: str
-    messages: List[Message] = []
+    messages: List[Message] = Field(default_factory=list)
 
 
 class GameState(BaseModel):
     """Current state of the game"""
     phase: GamePhase = GamePhase.SETUP
     day_number: int = 0
-    players: List[PlayerProfile] = []
-    eliminated_players: List[str] = []  # Player IDs
-    night_actions: dict = {}
-    game_log: List[str] = []
-    discussions: List[Discussion] = []  # Store all discussions for context
+    players: List[PlayerProfile] = Field(default_factory=list)
+    eliminated_players: List[str] = Field(default_factory=list)  # Player IDs
+    night_actions: dict = Field(default_factory=dict)
+    game_log: List[str] = Field(default_factory=list)
+    discussions: List[Discussion] = Field(default_factory=list)  # Store all discussions for context
