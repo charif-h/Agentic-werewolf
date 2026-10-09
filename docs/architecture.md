@@ -14,7 +14,8 @@ State lives in memory in one global `WerewolfGame` instance. There is no databas
 | Module | Role |
 |---|---|
 | `backend/main.py` | REST endpoints, `ConnectionManager` for WebSocket broadcast, CORS. Each endpoint calls `WerewolfGame` synchronously. |
-| `backend/game/game_logic.py` | `WerewolfGame`: setup, role distribution, `start_night`, `process_night_actions`, `start_day`, `conduct_discussion`, `conduct_vote`, `check_win_condition`, `end_game`. Mixes rules with LLM orchestration. |
+| `backend/engine/rules.py` | Pure rules, no LLM or I/O: role distribution, valid night targets, night resolution (kill, guard, seer, lovers), vote tally, win condition. Randomness is injectable (`random.Random`), so a full game can run in a unit test. |
+| `backend/game/game_logic.py` | `WerewolfGame` orchestrator: asks player agents for decisions (LLM), passes them to the engine, writes the game log. Also runs the discussion rounds. |
 | `backend/agents/player_agent.py` | `PlayerAgent`: one per player. Builds the persona prompt from profile + role and exposes `night_action`, `discuss`, `vote`. Keeps its own short message memory. |
 | `backend/game/game_master.py` | `GameMaster`: template announcements (night, day, elimination, winner) and the rule that decides when discussion ends. No LLM calls. |
 | `backend/agents/profile_generator.py` | Random unique names, sex, age (18-80), MBTI personality. |
