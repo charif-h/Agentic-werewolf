@@ -84,7 +84,7 @@ Agentic-werewolf/
 │   └── nginx.conf                # Web server config
 │
 ├── 🛠️ Utilities
-│   ├── test_system.py            # System tests
+│   ├── tests/                    # pytest suite
 │   ├── quick-start.sh            # Setup script
 │   ├── .env.example              # Config template
 │   └── .gitignore                # Git exclusions
@@ -280,7 +280,7 @@ WebSocket integration means:
 
 ### ✅ Tests Passing
 ```bash
-python test_system.py
+python -m pytest tests
 ```
 - ✓ Model validation
 - ✓ Profile generation
