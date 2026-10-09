@@ -8,6 +8,7 @@ from backend.models.game_models import PlayerProfile
 from backend.agents.ai_provider import AIProvider
 from backend.config import get_settings
 from backend.game.targets import pick_target
+from backend import prompts
 from backend.roles import get_handler
 
 
@@ -33,24 +34,13 @@ class PlayerAgent:
         
     def _build_system_prompt(self) -> str:
         """Build the system prompt based on player's personality and role"""
-        base_prompt = f"""You are {self.profile.name}, a {self.profile.age}-year-old {self.profile.sex.value} 
-playing The Werewolves of Millers Hollow.
+        profile = self.profile
+        return prompts.player_system_prompt(
+            profile.name, profile.age, profile.sex.value, profile.personality.value,
+            profile.get_personality_description(),
+            self.handler.description if profile.role else None,
+        )
 
-Your Personality: {self.profile.personality.value} - {self.profile.get_personality_description()}
-
-Your personality influences how you:
-- Communicate with others (formal/casual, aggressive/gentle, logical/emotional)
-- Make decisions and vote
-- React to accusations and events
-- Build trust or suspicion with other players
-"""
-        
-        if self.profile.role:
-            base_prompt += f"\n\nYour Role: {self.handler.description}"
-        
-        base_prompt += "\n\nPlay authentically according to your personality and role. Stay in character."
-        return base_prompt
-    
     def _prepare_messages(self, system_prompt: str, user_message: str) -> list:
         """
         Prepare messages for LLM ensuring proper conversation format for Mistral
@@ -99,28 +89,15 @@ Your personality influences how you:
         """
         system_prompt = self._build_system_prompt()
         
-        # Build context about game state
-        alive_players = [p for p in game_state.get('players', []) if p.get('status') == 'alive']
-        player_list = ", ".join([p.get('name') for p in alive_players])
-        
-        # Build discussion history context
-        discussion_context = ""
+        alive_names = [p.get('name') for p in game_state.get('players', [])
+                       if p.get('status') == 'alive']
         discussion_history = game_state.get('discussion_history', [])
-        if discussion_history:
-            discussion_context = "\nRecent Discussions:\n" + "\n".join(discussion_history[-get_settings().discussion_context_messages:])
-        
-        # Build comprehensive game context
-        game_context = f"""
-Current Game State:
-- Phase: {game_state.get('phase', 'unknown')}
-- Day: {game_state.get('day_number', 0)}
-- Alive Players: {player_list}
-- Recent Events: {game_state.get('recent_events', 'None')}
-{discussion_context}
+        window = get_settings().discussion_context_messages
+        game_context = prompts.game_context(
+            game_state.get('phase', 'unknown'), game_state.get('day_number', 0), alive_names,
+            game_state.get('recent_events', 'None'), discussion_history[-window:], context,
+        )
 
-Current Action: {context}
-"""
-        
         messages = self._prepare_messages(system_prompt, game_context)
         
         try:
@@ -167,34 +144,12 @@ Current Action: {context}
         Returns:
             Strategic comment or "no comment" if player chooses to stay silent
         """
-        # Build strategic context based on role
-        role_strategy = self.handler.discussion_strategy
-        
-        # Check if player should be more likely to respond
-        should_respond_bonus = self._should_respond_to_conversation(conversation_history)
-        
-        context = f"""You are {self.profile.name} in a Werewolf game discussion.
+        context = prompts.discussion_prompt(
+            self.profile.name, conversation_history, alive_players, self.profile.role.value,
+            self.handler.discussion_strategy,
+            self._should_respond_to_conversation(conversation_history),
+        )
 
-CURRENT CONVERSATION:
-{conversation_history if conversation_history.strip() else "No one has spoken yet."}
-
-ALIVE PLAYERS: {', '.join(alive_players)}
-
-YOUR HIDDEN INFO: You are a {self.profile.role.value}
-{role_strategy}
-
-RESPONSE FACTORS:
-{should_respond_bonus}
-
-INSTRUCTIONS:
-- Keep response SHORT (1-2 sentences max)
-- NEVER mention roles directly (werewolf, villager, etc.)
-- You can respond to what others said or ask questions
-- Be subtle and natural
-- If you have nothing to add, say "no comment"
-
-Do you want to respond to the current conversation?"""
-        
         try:
             response = self._get_llm_response(context)
             
@@ -219,27 +174,9 @@ Do you want to respond to the current conversation?"""
         Returns:
             String describing response factors
         """
-        factors = []
-        
-        # Check if player is mentioned by name
-        if self.profile.name in conversation_history:
-            factors.append("- You have been mentioned or addressed")
-        
-        # Check if recent activity (last few messages)
-        if conversation_history:
-            lines = conversation_history.strip().split('\n')
-            if len(lines) >= 2:  # There are recent messages
-                factors.append("- Recent activity in conversation")
-        
-        # Role-specific response factor
-        if self.handler.response_hint:
-            factors.append(self.handler.response_hint)
-        
-        if not factors:
-            factors.append("- No special pressure to respond")
-        
-        return '\n'.join(factors)
-    
+        return prompts.response_factors(self.profile.name, conversation_history,
+                                        self.handler.response_hint)
+
     def vote(self, conversation_history: str, alive_players: list[str]) -> str:
         """
         Make an independent voting decision based on strategic analysis
@@ -257,27 +194,11 @@ Do you want to respond to the current conversation?"""
         if not other_players:
             return alive_players[0] if alive_players else ""
         
-        role_voting_strategy = self.handler.voting_strategy
-        
-        context = f"""You are {self.profile.name} voting to eliminate someone.
+        context = prompts.vote_prompt(
+            self.profile.name, self.profile.role.value, self.handler.voting_strategy,
+            conversation_history, other_players,
+        )
 
-YOUR HIDDEN INFO: You are a {self.profile.role.value}
-{role_voting_strategy}
-
-CONVERSATION RECAP:
-{conversation_history if conversation_history.strip() else "No discussion took place."}
-
-VOTING CANDIDATES: {', '.join(other_players)}
-
-INSTRUCTIONS:
-- Analyze who acted most suspiciously
-- Consider who seemed defensive or evasive
-- Think about who tried to redirect blame
-- Vote for who you personally find most suspicious
-- Respond with ONLY the player's name
-
-Who do you vote to eliminate?"""
-        
         try:
             response = self._get_llm_response(context)
             
@@ -291,41 +212,12 @@ Who do you vote to eliminate?"""
             # Random vote as fallback to ensure independence
             return random.choice(other_players)
     
-    def _get_personality_behavior(self) -> str:
-        """Get brief personality-based behavior description"""
-        personality_map = {
-            "ENFP": "enthusiastic and curious",
-            "ENFJ": "empathetic and diplomatic", 
-            "ENTP": "witty and analytical",
-            "ENTJ": "direct and strategic",
-            "ESFP": "friendly and spontaneous",
-            "ESFJ": "caring and cooperative",
-            "ESTP": "practical and observant",
-            "ESTJ": "organized and decisive",
-            "INFP": "thoughtful and idealistic",
-            "INFJ": "insightful and reserved",
-            "INTP": "logical and skeptical",
-            "INTJ": "independent and methodical",
-            "ISFP": "gentle and cautious",
-            "ISFJ": "supportive and dutiful",
-            "ISTP": "calm and pragmatic",
-            "ISTJ": "reliable and careful"
-        }
-        return personality_map.get(self.profile.personality.value, "neutral")
-    
     def _get_llm_response(self, context: str) -> str:
         """Get response from LLM with error handling"""
-        system_prompt = f"""You are {self.profile.name} playing Werewolf. 
+        system_prompt = prompts.short_reply_system_prompt(
+            self.profile.name, self.profile.personality.value
+        )
 
-CRITICAL RULES:
-- Keep responses SHORT (1-2 sentences maximum)
-- NEVER mention roles directly (werewolf, villager, seer, etc.)
-- Be subtle and natural
-- Don't explain your reasoning or strategy
-- Act like a normal person in a tense situation
-
-Personality: {self.profile.personality.value} - be {self._get_personality_behavior()}"""
-        
         messages = self._prepare_messages(system_prompt, context)
         response = self.llm.invoke(messages)
         return response.content

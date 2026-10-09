@@ -94,6 +94,7 @@ curl -X POST http://localhost:8000/api/game/create \
 ```
 backend/
   main.py                 FastAPI app (REST + WebSocket)
+  prompts/                prompt templates sent to the LLM (player.py)
   roles/                  one module per role (team, prompts, night action); add a role = add a file
   engine/rules.py         pure game rules (roles, night, voting, win condition): no LLM, no I/O
   game/game_logic.py      WerewolfGame: asks the agents for decisions and applies them via the engine
