@@ -7,13 +7,13 @@ React UI  --REST-->  FastAPI (backend/main.py)  -->  WerewolfGame (game/game_log
                                                                                   (LangChain)
 ```
 
-State lives in memory in one global `WerewolfGame` instance. There is no database.
+State lives in memory: one `WerewolfGame` per session, kept in a `SessionManager` (`backend/services/sessions.py`) keyed by a random id, with a TTL and a maximum count. A per-session lock prevents two phases from running at once. There is no database.
 
 ## Backend modules
 
 | Module | Role |
 |---|---|
-| `backend/main.py` | REST endpoints, `ConnectionManager` for WebSocket broadcast, CORS. Each endpoint calls `WerewolfGame` synchronously. |
+| `backend/main.py` | REST endpoints under `/api/games/{id}`, `ConnectionManager` for per-game WebSocket broadcast, CORS. Each endpoint calls `WerewolfGame` synchronously. |
 | `backend/prompts/` | Prompt templates for player agents as plain functions (persona, game context, discussion, vote). Role-specific text comes from the role handlers. |
 | `backend/roles/` | One module per role, registered in a registry (`get_handler(role)`). A `RoleHandler` holds the team, the prompts (description, discussion/voting strategy), and the night action (order, valid targets, what it records). Adding a role means adding one file. |
 | `backend/engine/rules.py` | Pure rules, no LLM or I/O: role distribution, valid night targets, night resolution (kill, guard, seer, witch potions), hunter death shot, vote tally, win condition. Randomness is injectable (`random.Random`), so a full game can run in a unit test. |

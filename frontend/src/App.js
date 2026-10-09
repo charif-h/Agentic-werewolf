@@ -5,6 +5,7 @@ import PlayerCard from './components/PlayerCard';
 import GameLog from './components/GameLog';
 
 function App() {
+  const [gameId, setGameId] = useState(null);
   const [gameState, setGameState] = useState(null);
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -29,9 +30,10 @@ function App() {
     setLoading(true);
     setError(null);
     try {
-      await gameApi.createGame(24, null);
-      await loadGameState();
-      await loadPlayers();
+      const created = await gameApi.createGame(8, null);
+      setGameId(created.game_id);
+      await loadGameState(created.game_id);
+      await loadPlayers(created.game_id);
     } catch (err) {
       setError('Failed to create game: ' + err.message);
     } finally {
@@ -39,18 +41,18 @@ function App() {
     }
   };
 
-  const loadGameState = async () => {
+  const loadGameState = async (id = gameId) => {
     try {
-      const data = await gameApi.getGameState();
+      const data = await gameApi.getGameState(id);
       setGameState(data);
     } catch (err) {
       console.error('Error loading game state:', err);
     }
   };
 
-  const loadPlayers = async () => {
+  const loadPlayers = async (id = gameId) => {
     try {
-      const data = await gameApi.getPlayers();
+      const data = await gameApi.getPlayers(id);
       setPlayers(data.players || []);
     } catch (err) {
       console.error('Error loading players:', err);
@@ -61,7 +63,7 @@ function App() {
     setLoading(true);
     setError(null);
     try {
-      await gameApi.startGame();
+      await gameApi.startGame(gameId);
       await loadGameState();
     } catch (err) {
       setError('Failed to start game: ' + err.message);
@@ -74,7 +76,7 @@ function App() {
     setLoading(true);
     setError(null);
     try {
-      await gameApi.nextPhase();
+      await gameApi.nextPhase(gameId);
       await loadGameState();
       await loadPlayers();
     } catch (err) {
@@ -107,7 +109,7 @@ function App() {
 
       <div className="controls">
         <button onClick={createGame} disabled={loading}>
-          Create New Game (24 Players)
+          Create New Game (8 Players)
         </button>
         {gameState && gameState.phase === 'setup' && (
           <button onClick={startGame} disabled={loading}>
@@ -120,7 +122,7 @@ function App() {
           </button>
         )}
         {gameState && (
-          <button onClick={loadGameState} disabled={loading}>
+          <button onClick={() => loadGameState()} disabled={loading}>
             Refresh
           </button>
         )}

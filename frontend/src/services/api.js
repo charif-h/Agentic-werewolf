@@ -16,9 +16,9 @@ export const gameApi = {
     return response.data;
   },
 
-  // Create a new game
+  // Create a new game; the response contains its game_id
   createGame: async (numPlayers = 8, aiProvider = null) => {
-    const response = await api.post('/api/game/create', {
+    const response = await api.post('/api/games', {
       num_players: numPlayers,
       ai_provider: aiProvider
     });
@@ -26,26 +26,32 @@ export const gameApi = {
   },
 
   // Get current game state
-  getGameState: async () => {
-    const response = await api.get('/api/game/state');
+  getGameState: async (gameId) => {
+    const response = await api.get(`/api/games/${gameId}`);
     return response.data;
   },
 
   // Start the game
-  startGame: async () => {
-    const response = await api.post('/api/game/start');
+  startGame: async (gameId) => {
+    const response = await api.post(`/api/games/${gameId}/start`);
     return response.data;
   },
 
   // Progress to next phase
-  nextPhase: async () => {
-    const response = await api.post('/api/game/next-phase');
+  nextPhase: async (gameId) => {
+    const response = await api.post(`/api/games/${gameId}/next-phase`);
     return response.data;
   },
 
   // Get all players
-  getPlayers: async () => {
-    const response = await api.get('/api/players');
+  getPlayers: async (gameId) => {
+    const response = await api.get(`/api/games/${gameId}/players`);
+    return response.data;
+  },
+
+  // Delete a game
+  deleteGame: async (gameId) => {
+    const response = await api.delete(`/api/games/${gameId}`);
     return response.data;
   },
 };
