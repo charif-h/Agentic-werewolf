@@ -3,9 +3,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from backend.agents.player_agent import PlayerAgent
-from backend.game.game_logic import WerewolfGame
+from backend.engine import rules
 from backend.models.game_models import (
-    GameState, PersonalityType, PlayerProfile, Role, Sex,
+    PersonalityType, PlayerProfile, Role, Sex,
 )
 
 
@@ -55,11 +55,11 @@ def test_llm_error_falls_back_to_valid_candidate():
     assert make_agent(RuntimeError("boom")).vote("talk", ["Ann", "Bob"]) == "Bob"
 
 
-def test_game_fallback_vote_never_targets_voter():
-    game = WerewolfGame.__new__(WerewolfGame)
-    game.state = GameState()
+def test_fallback_vote_never_targets_voter():
+    seen = set()
     for _ in range(100):
-        votes = {"A": [], "B": [], "C": []}
-        game._cast_fallback_vote(votes, "A", ["A", "B", "C"], "test")
-        assert votes["A"] == []
-        assert len(votes["B"]) + len(votes["C"]) == 1
+        target = rules.fallback_vote_target("A", ["A", "B", "C"])
+        assert target in ("B", "C")
+        seen.add(target)
+    assert seen == {"B", "C"}
+    assert rules.fallback_vote_target("A", ["A"]) is None

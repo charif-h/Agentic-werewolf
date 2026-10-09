@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 from backend.game.game_logic import WerewolfGame
 from backend.game.targets import match_player_name, pick_target
 from backend.models.game_models import (
-    GameState, PersonalityType, PlayerProfile, Role, Sex,
+    GameState, PersonalityType, PlayerProfile, PlayerStatus, Role, Sex,
 )
 
 NAMES = ["Ann", "Bob", "Joanna"]
@@ -68,14 +68,14 @@ def test_choose_night_target_handles_none_answer():
     game = make_game()
     wolf = game.state.players[0]
     game.player_agents[wolf.id] = agent_returning(None)  # used to crash on None.lower()
-    assert game._choose_night_target(wolf, {}, ["Bob", "Cy"]).name in ("Bob", "Cy")
+    assert game._choose_night_target(wolf).name in ("Bob", "Cy")
 
 
 def test_choose_night_target_parses_sentence():
     game = make_game()
     wolf = game.state.players[0]
     game.player_agents[wolf.id] = agent_returning("I will eliminate Cy.")
-    assert game._choose_night_target(wolf, {}, ["Bob", "Cy"]).name == "Cy"
+    assert game._choose_night_target(wolf).name == "Cy"
 
 
 def test_choose_night_target_rejects_invalid_name():
@@ -83,20 +83,28 @@ def test_choose_night_target_rejects_invalid_name():
     wolf = game.state.players[0]
     game.player_agents[wolf.id] = agent_returning("Wolf")  # a werewolf is not a valid target
     for _ in range(50):
-        assert game._choose_night_target(wolf, {}, ["Bob", "Cy"]).name in ("Bob", "Cy")
+        assert game._choose_night_target(wolf).name in ("Bob", "Cy")
 
 
 def test_choose_night_target_survives_llm_error():
     game = make_game()
     wolf = game.state.players[0]
     game.player_agents[wolf.id] = agent_returning(RuntimeError("boom"))
-    assert game._choose_night_target(wolf, {}, ["Bob"]).name == "Bob"
+    assert game._choose_night_target(wolf).name in ("Bob", "Cy")
 
 
 def test_choose_night_target_no_valid_names():
     game = make_game()
-    assert game._choose_night_target(game.state.players[0], {}, []) is None
+    for p in game.state.players[1:]:
+        p.status = PlayerStatus.DEAD
+    assert game._choose_night_target(game.state.players[0]) is None
+    assert game._choose_night_target(None) is None
 
 
-def test_find_player_by_name_accepts_none():
-    assert make_game()._find_player_by_name(None) is None
+def test_seer_prompt_lists_valid_targets_without_self():
+    game = make_game()
+    seer = game.state.players[2]
+    agent = agent_returning("Bob")
+    game.player_agents[seer.id] = agent
+    assert game._choose_night_target(seer).name == "Bob"
+    assert agent.night_action.call_args[0][0]['valid_targets'] == ["Wolf", "Bob"]
