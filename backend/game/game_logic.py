@@ -11,7 +11,7 @@ from backend.models.game_models import (
 )
 from backend.agents.profile_generator import generate_all_players
 from backend.agents.player_agent import PlayerAgent
-from backend.agents.game_master_agent import GameMasterAgent
+from backend.game.game_master import GameMaster
 from backend.game.targets import pick_target
 
 
@@ -33,7 +33,7 @@ class WerewolfGame:
         self.ai_provider = ai_provider
         self.state = GameState()
         self.player_agents: Dict[str, PlayerAgent] = {}
-        self.game_master = GameMasterAgent(ai_provider=ai_provider)
+        self.game_master = GameMaster()
         
     def setup_game(self) -> GameState:
         """
@@ -123,8 +123,7 @@ class WerewolfGame:
         alive_werewolves = [p for p in self.state.players 
                            if p.status == PlayerStatus.ALIVE and p.role == Role.WEREWOLF]
         if alive_werewolves:
-            werewolf_names = [w.name for w in alive_werewolves]
-            werewolf_announcement = self.game_master.announce_werewolf_awakening(werewolf_names)
+            werewolf_announcement = self.game_master.announce_werewolf_awakening()
             self.state.game_log.append(f"[GAME MASTER] {werewolf_announcement}")
         
         return announcement
@@ -165,7 +164,7 @@ class WerewolfGame:
                 if victim and victim.role != Role.WEREWOLF:
                     results['killed'] = victim.id
                     # Announce werewolves' decision
-                    werewolf_decision = self.game_master.announce_werewolf_decision(victim.name)
+                    werewolf_decision = self.game_master.announce_werewolf_decision()
                     self.state.game_log.append(f"[GAME MASTER] {werewolf_decision}")
         
         # Guard protects someone
@@ -279,7 +278,7 @@ class WerewolfGame:
         )
         
         for discussion_round in range(1, max_rounds + 1):
-            round_had_new_speech = False
+            round_speech_count = 0
             
             # Shuffle player order each round for fairness
             shuffled_players = alive_players.copy()
@@ -303,7 +302,7 @@ class WerewolfGame:
                         message_text = f"[{player.name}] {comment}"
                         messages.append(message_text)
                         self.state.game_log.append(message_text)
-                        round_had_new_speech = True
+                        round_speech_count += 1
                         
                         # Add to structured discussion
                         message = Message(
@@ -329,32 +328,14 @@ class WerewolfGame:
                         print(f"Error with player {player.name}: {e}")
                         continue
             
-            # If no one spoke this round, check if we should end
-            if not round_had_new_speech:
-                if discussion_round >= 2:  # Minimum 2 rounds
-                    silence_announcement = "The discussion has concluded. Time to vote."
-                    self.state.game_log.append(f"[GAME MASTER] {silence_announcement}")
-                    break
-                    
-            # Check if Game Master wants to continue discussion
-            elif discussion_round >= 3:  # After round 3, GM can decide to end
-                try:
-                    conversation_so_far = "\n".join([f"[{msg.sender}] {msg.content}" for msg in discussion.messages])
-                    should_continue = self.game_master.should_continue_discussion(
-                        conversation_so_far, 
-                        discussion_round,
-                        len(alive_players)
-                    )
-                    
-                    if not should_continue:
-                        end_announcement = self.game_master.announce_discussion_end()
-                        self.state.game_log.append(f"[GAME MASTER] {end_announcement}")
-                        break
-                        
-                except Exception as e:
-                    print(f"GM decision failed: {e}")
-                    # Continue to next round on GM error
-            
+            # Rule-based Game Master decides whether to play another round
+            if not self.game_master.should_continue_discussion(
+                round_speech_count, discussion_round, len(alive_players), max_rounds
+            ):
+                end_announcement = self.game_master.announce_discussion_end()
+                self.state.game_log.append(f"[GAME MASTER] {end_announcement}")
+                break
+
             # Shorter delay between rounds for more dynamic feel
             time.sleep(0.5)
         

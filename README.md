@@ -1,6 +1,6 @@
 # Agentic Werewolf
 
-An AI-driven version of *The Werewolves of Millers Hollow*. Every player is an LLM agent with a random profile (name, sex, age, one of the 16 MBTI personalities) and a secret role. A Game Master agent narrates. You watch the game in a React UI.
+An AI-driven version of *The Werewolves of Millers Hollow*. Every player is an LLM agent with a random profile (name, sex, age, one of the 16 MBTI personalities) and a secret role. A rule-based Game Master (templates, no LLM) narrates. You watch the game in a React UI.
 
 > **Status:** prototype. It runs on cloud LLM APIs today. A move to a local Gemma model is planned (see the open issues and milestones on GitHub).
 
@@ -88,7 +88,8 @@ curl -X POST http://localhost:8000/api/game/create \
 backend/
   main.py                 FastAPI app (REST + WebSocket)
   game/game_logic.py      WerewolfGame: rules, phases, voting
-  agents/                 player_agent, game_master_agent, profile_generator, ai_provider
+  game/game_master.py     template-based Game Master (no LLM)
+  agents/                 player_agent, profile_generator, ai_provider
   models/game_models.py   Pydantic models and enums
 frontend/src/             React app (App.js, components/, services/api.js)
 tests/                    pytest tests (no LLM needed)
