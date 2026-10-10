@@ -29,6 +29,7 @@ from backend.agents.player_agent import PlayerAgent  # noqa: E402
 from backend.config import get_settings  # noqa: E402
 from backend.game.targets import match_player_name, parse_witch_answer  # noqa: E402
 from backend.llm import Message  # noqa: E402
+from backend.llm.schemas import parse_json  # noqa: E402
 from backend.llm.ollama_client import OllamaClient  # noqa: E402
 from backend.models.game_models import PersonalityType, PlayerProfile, Role, Sex  # noqa: E402
 from backend.prompts import leaks_own_role  # noqa: E402
@@ -85,33 +86,31 @@ def run_scenarios(client: OllamaClient, repeats: int, seed: int) -> Dict[str, Li
     recorder = Recorder(client)
     results: Dict[str, List[Dict[str, Any]]] = {"discussion": [], "vote": [], "night": [], "witch": []}
 
-    def last(kind: str, **extra):
-        results[kind].append({**recorder.records[-1], **extra})
+    def last(kind: str, answer, **extra):
+        """Keep the raw model output and what the agent made of it (`text`)"""
+        record = recorder.records[-1]
+        results[kind].append({**record, "raw": record["text"], "text": answer or "", **extra})
 
     for repeat in range(repeats):
         for index, conversation in enumerate(CONVERSATIONS):
             for role in ROLES:
                 agent = make_agent(recorder, index + repeat, role)
-                agent.discuss(conversation, NAMES)
-                last("discussion", role=role.value)
+                last("discussion", agent.discuss(conversation, NAMES), role=role.value)
 
                 others = [n for n in NAMES if n != "Ann"]
                 agent = make_agent(recorder, index + repeat, role)
-                agent.vote(conversation, NAMES)
-                last("vote", candidates=others)
+                last("vote", agent.vote(conversation, NAMES), candidates=others)
 
         for role in (Role.WEREWOLF, Role.SEER, Role.GUARD):
             for index in range(4):
                 targets = rng.sample(NAMES[1:], 4) if role != Role.GUARD else NAMES
                 agent = make_agent(recorder, index, role)
-                agent.night_action(game_state(targets))
-                last("night", candidates=targets, role=role.value)
+                last("night", agent.night_action(game_state(targets)), candidates=targets, role=role.value)
 
         for index in range(4):
             agent = make_agent(recorder, index, Role.WITCH)
             targets = rng.sample(NAMES[1:], 4)
-            agent.witch_action(game_state(targets), "Bob", True, True, targets)
-            last("witch", candidates=targets)
+            last("witch", agent.witch_action(game_state(targets), "Bob", True, True, targets), candidates=targets)
     return results
 
 
@@ -192,6 +191,7 @@ def benchmark(model: str, host: str, repeats: int, seed: int, num_ctx: int) -> D
         "vram_gb": round(vram_bytes(host, model) / 1e9, 2),
         "cold_start_s": round(cold, 1),
         "calls": metrics["calls"],
+        "json_valid": sum(parse_json(r["raw"]) is not None for r in all_rows) / max(len(all_rows), 1),
         "errors": metrics["errors"],
         "tokens_per_s": round(metrics["tokens_per_second"], 1),
         "avg_answer_s": round(statistics.mean(r["seconds"] for r in all_rows), 2),
@@ -223,6 +223,7 @@ def to_markdown(reports: List[Dict[str, Any]]) -> str:
         ("Seconds per answer", lambda r: r["avg_answer_s"]),
         ("Average prompt tokens", lambda r: r["avg_prompt_tokens"]),
         ("Errors", lambda r: r["errors"]),
+        ("Raw answers that are valid JSON", lambda r: pct(r.get("json_valid", 0))),
         ("Vote: exact name only", lambda r: pct(r["vote"]["exact"])),
         ("Vote: valid after parsing", lambda r: pct(r["vote"]["parsed"])),
         ("Night target: exact name only", lambda r: pct(r["night"]["exact"])),

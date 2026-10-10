@@ -23,6 +23,7 @@ State lives in memory: one `WerewolfGame` per session, kept in a `SessionManager
 | `backend/agents/player_agent.py` | `PlayerAgent`: one per player. Builds the persona prompt from profile + role and exposes `night_action`, `discuss`, `vote`. Keeps its own short message memory. |
 | `backend/game/game_master.py` | `GameMaster`: template announcements (night, day, elimination, winner) and the rule that decides when discussion ends. No LLM calls. |
 | `backend/agents/profile_generator.py` | Random unique names, sex, age (18-80), MBTI personality. |
+| `backend/llm/schemas.py` | JSON schemas for the decisions players make (a target restricted to the valid names with an `enum`, the discussion `{speak, message}`, the witch's `{save, poison}`) and the parsers for the answers. Ollama's `format` option makes the model produce only matching JSON, so votes and night targets are always valid names. When the model is unreachable or the answer is not valid, the game uses a random valid target (never a potion). |
 | `backend/llm/` | The `LLMClient` interface (`generate(messages, max_tokens, temperature, json_schema) -> str`), `Message`, `OllamaClient` (HTTP client for a local Ollama server; also reports whether the model is installed), and a scripted `FakeLLMClient` for tests. One client is shared by every game and every player. |
 | `backend/models/game_models.py` | Pydantic models and enums: `PlayerProfile`, `GameState`, `Discussion`, `Message`, `Role`, `GamePhase`, `PlayerStatus`, `PersonalityType`, `Sex`. |
 
