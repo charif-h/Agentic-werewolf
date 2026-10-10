@@ -68,7 +68,7 @@ python -m uvicorn backend.main:app --reload --port 8000
 # Frontend (second terminal)
 cd frontend
 npm install
-npm start
+npm run dev
 ```
 
 Then open:
@@ -93,7 +93,7 @@ All settings live in `backend/config.py` and can be set in `.env` or as environm
 | `LLM_WARMUP` | `true` | load the model when the server starts, so the first game does not wait |
 | `REVEAL_ROLES` | `false` | show every role in the API (debug); by default only dead players' roles are visible |
 | `CORS_ORIGINS` | `["http://localhost:3000"]` | allowed frontend origins (JSON list) |
-| `REACT_APP_API_URL` | `http://localhost:8000` | backend URL used by the frontend |
+| `VITE_API_URL` | empty | frontend only: backend address when it is not on the same origin. By default the page calls `/api` and `/ws` and the dev server (or nginx) forwards them to the backend |
 
 The `.env` file must be in the project root.
 
@@ -162,8 +162,8 @@ The tests never talk to a real model: `tests/conftest.py` replaces the LLM clien
 - **"Model ... is not installed"**: run `ollama pull gemma3:4b` (or the model set in `LLM_MODEL`).
 - **The first answer takes a minute**: the model is being loaded into memory; later answers take well under a second.
 - **Python import errors**: run uvicorn from the project root, as `python -m uvicorn backend.main:app`.
-- **Port in use**: change `--port` for uvicorn, or `PORT=3001 npm start` for the frontend.
-- **Frontend cannot reach the backend**: check that the backend is running and `REACT_APP_API_URL` is correct.
+- **Port in use**: change `--port` for uvicorn, or `npm run dev -- --port 3001` for the frontend (the dev server forwards `/api` and `/ws` to `http://localhost:8000`, change it with `VITE_BACKEND_URL`).
+- **Frontend cannot reach the backend**: check that the backend is running on port 8000 (`VITE_BACKEND_URL` if not).
 - **Docker build problems**: `docker compose down` then `docker compose up --build`.
 
 ## License

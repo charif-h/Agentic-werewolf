@@ -39,7 +39,7 @@ jobs:
         run: python -m pytest --cov=backend --cov-report=term-missing
 
   frontend:
-    name: Frontend (build + lint)
+    name: Frontend (lint + test + build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -59,7 +59,8 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Tests
+        run: npm test
+
       - name: Build
         run: npm run build
-        env:
-          CI: "false"   # warnings do not fail the build; lint above is the gate
