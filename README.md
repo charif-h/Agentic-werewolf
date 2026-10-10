@@ -86,6 +86,9 @@ All settings live in `backend/config.py` and can be set in `.env` or as environm
 | `LLM_NUM_CTX`, `LLM_KEEP_ALIVE`, `LLM_TIMEOUT` | 4096, `30m`, 120 | context window, how long the model stays loaded, seconds per answer |
 | `DEFAULT_PLAYERS`, `MIN_PLAYERS`, `MAX_PLAYERS` | 8, 4, 12 | player count (requests are clamped to the min/max) |
 | `DISCUSSION_MAX_ROUNDS` | 5 | maximum discussion rounds |
+| `DISCUSSION_GATE` | `true` | players with nothing pressing to say skip their turn (fewer model calls) |
+| `LLM_MAX_PARALLEL` | 1 | model calls in flight at once; raise it together with Ollama's `OLLAMA_NUM_PARALLEL` if your GPU can serve several |
+| `LLM_WARMUP` | `true` | load the model when the server starts, so the first game does not wait |
 | `REVEAL_ROLES` | `false` | show every role in the API (debug); by default only dead players' roles are visible |
 | `CORS_ORIGINS` | `["http://localhost:3000"]` | allowed frontend origins (JSON list) |
 | `REACT_APP_API_URL` | `http://localhost:8000` | backend URL used by the frontend |

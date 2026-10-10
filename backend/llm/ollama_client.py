@@ -8,6 +8,7 @@ import httpx
 
 from backend.llm.base import LLMError, Message
 from backend.llm.formatting import to_alternating
+from backend.llm.metrics import LLMMetrics, current_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +17,15 @@ class OllamaClient:
     """
     Talks to the Ollama HTTP API (`/api/chat`, non-streaming).
 
-    One instance can be shared by many threads: `httpx.Client` is thread-safe
-    and the server decides how many requests run in parallel.
+    One instance is shared by every game and thread. A single GPU runs one
+    request at a time, so calls queue up for one of `max_parallel` slots
+    (raise it together with Ollama's OLLAMA_NUM_PARALLEL if your hardware
+    can serve several requests at once).
     """
 
     def __init__(self, host: str = "http://localhost:11434", model: str = "gemma3:4b", *,
                  temperature: float = 0.8, max_tokens: Optional[int] = 256, num_ctx: int = 4096,
-                 keep_alive: str = "30m", timeout: float = 120.0,
+                 keep_alive: str = "30m", timeout: float = 120.0, max_parallel: int = 1,
                  transport: Optional[httpx.BaseTransport] = None):
         """
         Args:
@@ -32,7 +35,8 @@ class OllamaClient:
             max_tokens: Default answer length limit (None = model default)
             num_ctx: Context window in tokens (smaller = less VRAM)
             keep_alive: How long Ollama keeps the model loaded after a call
-            timeout: Seconds to wait for one answer
+            timeout: Seconds to wait for one answer (after getting a slot)
+            max_parallel: How many requests may be in flight at the same time
             transport: Custom httpx transport (used by tests)
         """
         self.host = host.rstrip("/")
@@ -41,36 +45,25 @@ class OllamaClient:
         self.max_tokens = max_tokens
         self.num_ctx = num_ctx
         self.keep_alive = keep_alive
+        self.max_parallel = max(1, max_parallel)
+        self._slots = threading.BoundedSemaphore(self.max_parallel)
         self._http = httpx.Client(base_url=self.host, timeout=timeout, transport=transport)
-        self._metrics_lock = threading.Lock()
-        self.reset_metrics()
+        self._totals = LLMMetrics()
 
     def reset_metrics(self) -> None:
         """Start counting calls, tokens and time from zero"""
-        with self._metrics_lock:
-            self._metrics = {"calls": 0, "errors": 0, "prompt_tokens": 0,
-                             "completion_tokens": 0, "seconds": 0.0, "generation_seconds": 0.0,
-                             "load_seconds": 0.0}
+        self._totals.reset()
 
     def metrics(self) -> Dict[str, Any]:
         """Calls, tokens and time since the last reset (thread-safe snapshot)"""
-        with self._metrics_lock:
-            data = dict(self._metrics)
-        seconds = data["generation_seconds"]
-        data["tokens_per_second"] = data["completion_tokens"] / seconds if seconds else 0.0
-        return data
+        return self._totals.snapshot()
 
-    def _record(self, started: float, answer: Optional[Dict[str, Any]]) -> None:
-        with self._metrics_lock:
-            self._metrics["calls"] += 1
-            self._metrics["seconds"] += time.monotonic() - started
-            if answer is None:
-                self._metrics["errors"] += 1
-                return
-            self._metrics["prompt_tokens"] += answer.get("prompt_eval_count") or 0
-            self._metrics["completion_tokens"] += answer.get("eval_count") or 0
-            self._metrics["generation_seconds"] += (answer.get("eval_duration") or 0) / 1e9
-            self._metrics["load_seconds"] += (answer.get("load_duration") or 0) / 1e9
+    def _record(self, started: float, waited: float, answer: Optional[Dict[str, Any]]) -> None:
+        seconds = time.monotonic() - started
+        self._totals.add_call(seconds, waited, answer)
+        game_metrics = current_metrics()      # the game that asked, if it is tracking
+        if game_metrics is not None:
+            game_metrics.add_call(seconds, waited, answer)
 
     def generate(self, messages: Sequence[Message], *, max_tokens: Optional[int] = None,
                  temperature: Optional[float] = None,
@@ -96,13 +89,18 @@ class OllamaClient:
             payload["format"] = json_schema
 
         started = time.monotonic()
-        try:
-            return self._chat(payload, started)
-        except LLMError:
-            self._record(started, None)
-            raise
+        with self._slots:                       # queue here when the model is busy
+            waited = time.monotonic() - started
+            try:
+                answer = self._chat(payload)
+            except LLMError:
+                self._record(started, waited, None)
+                raise
+        self._record(started, waited, answer)
+        return answer["message"]["content"]
 
-    def _chat(self, payload: Dict[str, Any], started: float) -> str:
+    def _chat(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """One request to /api/chat; returns the decoded answer"""
         try:
             response = self._http.post("/api/chat", json=payload)
         except httpx.ConnectError as e:
@@ -118,11 +116,34 @@ class OllamaClient:
             raise LLMError(f"Ollama returned HTTP {response.status_code}: {response.text[:200]}")
         try:
             answer = response.json()
-            text = answer["message"]["content"]
+            answer["message"]["content"]
         except (ValueError, KeyError, TypeError) as e:
             raise LLMError("Unexpected answer from Ollama") from e
-        self._record(started, answer)
-        return text
+        return answer
+
+    def warm_up(self) -> float:
+        """
+        Load the model into memory now, so that the first game does not wait for it
+
+        Returns:
+            Seconds it took
+
+        Raises:
+            LLMError: if Ollama cannot be reached or the model is missing
+        """
+        started = time.monotonic()
+        try:
+            response = self._http.post("/api/generate", json={
+                "model": self.model, "keep_alive": self.keep_alive,
+                "options": {"num_ctx": self.num_ctx},
+            }, timeout=300)
+        except httpx.HTTPError as e:
+            raise LLMError(f"Could not warm up the model: {e}") from e
+        if response.status_code == 404:
+            raise LLMError(f"Model '{self.model}' is not installed. Run: ollama pull {self.model}")
+        if response.status_code != 200:
+            raise LLMError(f"Could not warm up the model (HTTP {response.status_code})")
+        return time.monotonic() - started
 
     def status(self) -> Dict[str, Any]:
         """
