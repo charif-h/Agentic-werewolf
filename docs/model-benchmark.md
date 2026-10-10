@@ -30,7 +30,7 @@ python scripts/benchmark_models.py gemma3:1b gemma3:4b gemma3:4b-it-qat gemma4:e
 * **Leaks a role word**: the discussion answer contains werewolf, villager, seer, witch, hunter or guard. The current prompts forbid all of them, so 0% mostly shows the instruction is obeyed (it also stops players from accusing anyone of being a werewolf; see the notes).
 * **Distinct bigrams / identical answers**: diversity of the discussion; low diversity means every player sounds the same.
 
-## Results (prompts as of milestone M2)
+## Results with the original prompts (milestone M2)
 
 | Metric | gemma3:1b | gemma3:4b | gemma3:4b-it-qat | gemma4:e2b-it-qat |
 |---|---|---|---|---|
@@ -54,13 +54,45 @@ python scripts/benchmark_models.py gemma3:1b gemma3:4b gemma3:4b-it-qat gemma4:e
 | Discussion: identical answers | 28% | 2% | 0% | 0% |
 
 
+## After the prompt redesign (issue #22)
+
+Same scenarios, same machine, new prompts: no more yes/no question at the end of the discussion prompt, shorter persona prompt (average prompt 290 to 237 tokens), three example replies, accusing a named player encouraged, only the speaker's **own** role is forbidden (so "Bob, your silence is concerning" is fine), and a Gemma-style chat where the system text is a prefix of the first user turn. The "role" rows now count statements of the player's own role ("I am the seer") instead of any role word.
+
+| Metric | gemma3:1b | gemma3:4b | gemma3:4b-it-qat | gemma4:e2b-it-qat |
+|---|---|---|---|---|
+| Download size (GB) | 0.81 | 3.35 | 4.01 | 4.34 |
+| VRAM used (GB) | 0.88 | 2.88 | 3.54 | 1.65 |
+| Cold start (s) | 2.7 | 8.2 | 8.9 | 11.5 |
+| Tokens per second | 190.9 | 102.9 | 91.1 | 128.8 |
+| Seconds per answer | 0.14 | 0.32 | 0.36 | 0.25 |
+| Average prompt tokens | 236 | 237 | 237 | 236 |
+| Errors | 0 | 0 | 0 | 0 |
+| Vote: exact name only | 54% | 31% | 31% | 10% |
+| Vote: valid after parsing | 100% | 100% | 100% | 100% |
+| Night target: exact name only | 100% | 100% | 100% | 100% |
+| Night target: valid after parsing | 100% | 100% | 100% | 100% |
+| Witch decision understood | 100% | 100% | 100% | 88% |
+| Discussion: says 'no comment' | 0% | 0% | 0% | 0% |
+| Discussion: states its own role | 0% | 0% | 0% | 0% |
+| Discussion: uses a role word at all | 0% | 0% | 0% | 0% |
+| Discussion: names another player | 77% | 90% | 94% | 92% |
+| Discussion: too long (>2 sentences or >40 words) | 23% | 0% | 10% | 0% |
+| Discussion: average words | 10 | 17 | 17 | 12 |
+| Discussion: distinct bigrams | 70% | 57% | 66% | 61% |
+| Discussion: identical answers | 2% | 2% | 2% | 25% |
+
+
+What changed for the better: nobody answers "Yes, please." any more (0% said 'no comment' or wandered off topic), 77 to 94% of the discussion lines now name another player and give a reason, and the 4B models write 17 words on average instead of 12 to 14 with stray "No comment." tails. Remaining weak spots: votes are often a name followed by a reason (31% bare names for gemma3:4b), which the structured output of issue #23 removes; `gemma4:e2b-it-qat` repeats itself in 25% of the discussion lines and the 1B model gets too long in 23%.
+
+**Decision unchanged: `gemma3:4b` stays the default**, `gemma3:1b` the low-end fallback. `gemma4:e2b-it-qat` is the one to watch (lowest VRAM, fastest of the 4B-class models) but is less varied here.
+
 ## Reading the results
 
 * **Validity is not a problem for any model.** All four give a usable name 100% of the time after parsing. The 4B QAT model is the least disciplined (62% bare names for night targets; one sample wrote a paragraph with markdown), which is the reason to use JSON-schema output (issue #23) instead of parsing prose.
 * **Speed is fine for all of them.** Answers take 0.14 to 0.38 s on average once the model is loaded; cold start is 2 to 8 s from the SSD. A game makes a few hundred calls (issue #24 measures and reduces this), so model time stays in the order of a minute or two. The first request after Ollama starts is slower while the model loads from disk.
 * **Memory**: gemma3:4b needs 2.9 GB of VRAM (3.5 GB for the QAT build) with a 4096-token context, leaving room on an 8 GB card. gemma4:e2b reports only 1.65 GB because part of its weights stay in system memory.
 * **Quality**: the 1B model is fast and valid but gives the same non-answers ("Yes, please.") 28% of the time and its discussion is the least varied. gemma3:4b writes plausible, varied lines but often adds "No comment." after a real sentence and sometimes an emoji. gemma3:4b-it-qat says "No comment" 21% of the time and is verbose when it does talk. **gemma4:e2b-it-qat is the most varied (71% distinct bigrams, no identical answers) and the least silent (2% "no comment")**, although it also produced a stage direction ("(Silence reigns)").
-* **A prompt problem showed up**: the discussion prompt ended with the question "Do you want to respond to the current conversation?", and small models answered "Yes, please." Issue #22 removes that question and shortens the prompts; the benchmark should be re-run afterwards.
+* **A prompt problem showed up**: the discussion prompt ended with the question "Do you want to respond to the current conversation?", and small models answered "Yes, please." Issue #22 removed that question and shortened the prompts; the results after the change are in the next section.
 
 ## Decision
 
