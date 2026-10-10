@@ -35,7 +35,8 @@ NO_COMMENT = "no comment"
 
 DISCUSSION_ANSWER_FORMAT = (
     'Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two short sentences>"}. '
-    'If you really have nothing to add, answer {"speak": false, "message": ""}.')
+    'If you really have nothing to add, answer {"speak": false, "message": ""}. '
+    "Write the JSON with plain straight quotes and apostrophes, never curly ones.")
 TARGET_ANSWER_FORMAT = 'Answer in JSON: {"target": "<name>"}.'
 WITCH_ANSWER_FORMAT = ('Answer in JSON: {"save": true or false, "poison": "<name>" or "none"}. '
                        'Use true / a name only for a potion you still have.')

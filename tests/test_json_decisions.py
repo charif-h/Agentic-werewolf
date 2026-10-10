@@ -165,3 +165,48 @@ def test_discussion_requests_the_discussion_schema():
     options = agent.llm.calls[0][1]
     assert set(options["json_schema"]["properties"]) == {"speak", "message"}
     assert options["max_tokens"] == 160
+
+
+# --- the typographic-quote failure found by scripts/simulate.py -------------------------------------
+
+REAL_BROKEN_ANSWERS = [
+    '{"speak": true, "message": "I appreciate everyone bringing up observations, Alice. It\u2019s good to be '
+    'mindful of how we\u2019re all perceiving things.\u201d} {} 2024-02-29T14:33:35.287Z 00:00:00.000000000 Z',
+    '{"speak": true, "message": "Ryan, you\'re deflecting \u2013 you were near the body, weren\'t you?\u201d} '
+    '2024-02-29T15:03:12.456Z \xa0\xa0\xa0\xa0\xa0\xa0\xa0\xa0',
+    '{"speak": true, "message": "I\u2019m genuinely trying to contribute.\u201d}\n{}',
+]
+
+
+@pytest.mark.parametrize("raw", REAL_BROKEN_ANSWERS)
+def test_a_curly_closing_quote_is_accepted(raw):
+    speak, message = schemas.parse_discussion(raw)
+    assert speak is True
+    assert message and not message.endswith("\u201d") and "2024" not in message and "{" not in message
+
+
+def test_the_recovered_message_is_exact():
+    raw = '{"speak": true, "message": "Bob, it\u2019s odd.\u201d} garbage'
+    assert schemas.parse_discussion(raw) == (True, "Bob, it\u2019s odd.")
+    assert schemas.parse_discussion('{"speak": false, "message": "\u201d} x') == (False, "")
+
+
+@pytest.mark.parametrize("raw", [
+    '{"speak": true, "message": "unterminated',
+    '{"speak": "yes", "message": "Hi\u201d}',
+    '{"message": "Hi\u201d}',
+    "Bob looks odd.",
+])
+def test_other_malformed_answers_are_still_rejected(raw):
+    assert schemas.parse_discussion(raw) is None
+
+
+def test_a_broken_answer_makes_the_player_speak_instead_of_staying_silent():
+    raw = REAL_BROKEN_ANSWERS[0]
+    reply = make_agent(Role.VILLAGER, raw, wrap_json=False).discuss("[Bob] hi", ["Ann", "Bob"])
+    assert reply.startswith("I appreciate everyone") and reply != "no comment"
+
+
+def test_the_prompt_asks_for_straight_quotes():
+    from backend import prompts
+    assert "plain straight quotes" in prompts.discussion_prompt("Ann", "", ["Ann"], "seer", "S", "F")

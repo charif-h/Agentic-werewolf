@@ -66,9 +66,26 @@ def parse_target(text: Optional[str], names: Iterable[str]) -> Optional[str]:
     return None
 
 
+# Gemma likes typographic quotes: it writes curly apostrophes inside the message and then
+# closes the string with a curly quote too, so the JSON never closes:
+#   {"speak": true, "message": "Bob, it’s odd.”} ...garbage...
+_BROKEN_DISCUSSION = re.compile(
+    r'^\s*\{\s*"speak"\s*:\s*(true|false)\s*,\s*"message"\s*:\s*"(.*?)["“”]\s*\}',
+    re.DOTALL)
+
+
 def parse_discussion(text: Optional[str]) -> Optional[Tuple[bool, str]]:
-    """`(speak, message)` from a discussion answer, or None if it is not valid"""
+    """
+    `(speak, message)` from a discussion answer, or None if it is not valid
+
+    Accepts the one malformed shape models really produce: the closing quote of
+    the message replaced by a typographic quote (anything after the `}` is ignored).
+    """
     data = parse_json(text)
+    if data is None and text:
+        broken = _BROKEN_DISCUSSION.match(text)
+        if broken:
+            data = {"speak": broken.group(1) == "true", "message": broken.group(2)}
     if not data or not isinstance(data.get("speak"), bool) or not isinstance(data.get("message"), str):
         return None
     return data["speak"], data["message"]
