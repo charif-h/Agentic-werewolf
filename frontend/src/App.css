@@ -268,3 +268,14 @@ button.danger:hover {
   margin: 8px 0 12px;
 }
 .llm-stats .warn { color: #ffd166; }
+
+/* Spectator mode and debugging summaries */
+.spectator { align-self: center; font-size: 0.9em; cursor: pointer; }
+.spectator input:disabled { cursor: not-allowed; }
+.player-card .role.secret { color: #ffd166 !important; }
+
+.summaries { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.summary { background: rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 8px 12px; font-size: 0.9em; }
+.summary summary { cursor: pointer; font-weight: bold; }
+.summary .tally { list-style: none; padding: 0; margin: 6px 0; }
+.summary .muted, .muted { color: #888; }

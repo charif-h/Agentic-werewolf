@@ -106,3 +106,23 @@ def test_cors_only_allows_configured_origins(client):
     assert preflight("http://localhost:3000").headers.get("access-control-allow-origin") == "http://localhost:3000"
     assert "access-control-allow-origin" not in preflight("https://evil.example").headers
     assert "access-control-allow-credentials" not in preflight("http://localhost:3000").headers
+
+
+def test_game_state_says_whether_roles_are_revealed(client, monkeypatch):
+    create(client, num_players=6)
+    url = f"/api/games/{client.game_id}"
+    assert client.get(url).json()["roles_revealed"] is False
+    monkeypatch.setattr("backend.api.games.get_settings", lambda: settings(reveal_roles=True))
+    assert client.get(url).json()["roles_revealed"] is True
+
+
+def test_the_log_length_can_be_chosen(client):
+    create(client, num_players=6)
+    gid = client.game_id
+    client.post(f"/api/games/{gid}/start")
+    client.post(f"/api/games/{gid}/next-phase")
+    full = client.get(f"/api/games/{gid}").json()["game_log"]
+    assert len(full) > 3
+    assert client.get(f"/api/games/{gid}?log_limit=2").json()["game_log"] == full[-2:]
+    assert client.get(f"/api/games/{gid}?log_limit=0").status_code == 422
+    assert client.get(f"/api/games/{gid}?log_limit=99999").status_code == 422

@@ -3,7 +3,7 @@ import asyncio
 import logging
 from typing import Set
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -72,8 +72,8 @@ async def delete_game(game_id: str):
 
 
 @router.get("/{game_id}")
-async def get_game_state(game_id: str):
-    """Get current game state"""
+async def get_game_state(game_id: str, log_limit: int = Query(200, ge=1, le=2000)):
+    """Get current game state (`log_limit` = how many of the latest log lines to return)"""
     session = get_session(game_id)
     game_state = session.game.state
     return {
@@ -81,7 +81,8 @@ async def get_game_state(game_id: str):
         "phase": game_state.phase.value,
         "day_number": game_state.day_number,
         "players": [serialize_player(p) for p in game_state.players],
-        "game_log": game_state.game_log[-20:],  # Last 20 entries
+        "game_log": game_state.game_log[-log_limit:],
+        "roles_revealed": get_settings().reveal_roles,  # REVEAL_ROLES: living players' roles are in `players`
         "llm": session.game.metrics.snapshot(),  # model calls, tokens and time of this game
     }
 

@@ -104,7 +104,7 @@ Each game has its own id, so several games can run at once. Idle games are remov
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/api/games` | create a game, body `{"num_players": 8}`; returns `game_id` |
-| GET | `/api/games/{id}` | phase, day, players, last 20 log lines |
+| GET | `/api/games/{id}` | phase, day, players, the latest log lines (`?log_limit=`, default 200), model usage, `roles_revealed` |
 | POST | `/api/games/{id}/start` | start the first night |
 | POST | `/api/games/{id}/next-phase` | run the current phase and move on; waits for the result, or answers 202 at once with `?background=true` (409 if a phase is already running, the game has not started, or it has ended) |
 | GET | `/api/games/{id}/players` | player profiles |
@@ -162,7 +162,7 @@ The tests never talk to a real model: `tests/conftest.py` replaces the LLM clien
 - **"Model ... is not installed"**: run `ollama pull gemma3:4b` (or the model set in `LLM_MODEL`).
 - **The first answer takes a minute**: the model is being loaded into memory; later answers take well under a second.
 - **Python import errors**: run uvicorn from the project root, as `python -m uvicorn backend.main:app`.
-- **Port in use**: change `--port` for uvicorn, or `npm run dev -- --port 3001` for the frontend (the dev server forwards `/api` and `/ws` to `http://localhost:8000`, change it with `VITE_BACKEND_URL`).
+- **Port in use**: change `--port` for uvicorn, or `npm run dev -- --port 3001` for the frontend (the dev server forwards `/api` and `/ws` to `http://127.0.0.1:8000`, change it with `VITE_BACKEND_URL`).
 - **Frontend cannot reach the backend**: check that the backend is running on port 8000 (`VITE_BACKEND_URL` if not).
 - **Docker build problems**: `docker compose down` then `docker compose up --build`.
 

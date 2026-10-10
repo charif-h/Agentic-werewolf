@@ -192,6 +192,50 @@ describe('App', () => {
     expect(calls).toContain('DELETE /api/games/g1');
   });
 
+  it('keeps spectator mode off and unavailable while the server hides the roles', async () => {
+    await startedGame();
+    const toggle = screen.getByRole('checkbox', { name: /Spectator mode/ });
+    expect(toggle).not.toBeChecked();
+    expect(toggle).toBeDisabled();
+    expect(screen.getByText('🎭 Hidden')).toBeInTheDocument();
+  });
+
+  it('lets the user watch with all roles when the server sends them, off by default', async () => {
+    const spectated = PLAYERS.map((p) => (p.id === 'p1' ? { ...p, role: 'seer' } : p));
+    fetch.mockImplementation((url, options = {}) => {
+      const method = options.method || 'GET';
+      if (url === '/api/model') return json({ model: 'm', reachable: true, installed: true, loaded: true });
+      if (url === '/api/games' && method === 'POST') return json({ game_id: 'g1' });
+      if (url === '/api/games/g1') return json({ ...serverGame, players: spectated, roles_revealed: true });
+      if (url === '/api/games/g1/players') return json({ players: spectated });
+      return json({ detail: 'nope' }, 404);
+    });
+    render(<App />);
+    await userEvent.click(screen.getByRole('button', { name: /Create New Game/ }));
+    await screen.findByText('Ann');
+    expect(screen.getByText('🎭 Hidden')).toBeInTheDocument(); // the server sent the role, the page hides it
+    expect(screen.queryByText(/Seer/)).not.toBeInTheDocument();
+
+    const toggle = screen.getByRole('checkbox', { name: /Spectator mode/ });
+    expect(toggle).toBeEnabled();
+    await userEvent.click(toggle);
+    expect(screen.getByText(/Seer/)).toHaveClass('secret');
+    await userEvent.click(toggle);
+    expect(screen.queryByText(/Seer/)).not.toBeInTheDocument();
+  });
+
+  it('shows the last night and the last vote for debugging', async () => {
+    await startedGame();
+    serverGame = { ...serverGame, phase: 'discussion', day_number: 2, game_log: [
+      '[GAME MASTER] Day 2 begins. Cy was killed.',
+      '[VOTE] Ann votes to eliminate Bob',
+      '[GAME MASTER] Bob has been voted out by the village. Their role was: werewolf.',
+    ] };
+    send({ type: 'phase_change', data: { phase: 'voting' } });
+    expect(await screen.findByText('Day 2: Cy was killed.')).toBeInTheDocument();
+    expect(screen.getByText(/Voted out:/)).toHaveTextContent('Voted out: Bob (werewolf)');
+  });
+
   it('shows how much the model worked for the game once it did something', async () => {
     await startedGame();
     serverGame = { ...serverGame, llm: { calls: 12, errors: 0, invalid_answers: 0, prompt_tokens: 5000,
