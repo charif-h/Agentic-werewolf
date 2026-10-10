@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     discussion_max_rounds: int = Field(5, ge=1)
     memory_messages: int = Field(4, ge=0)          # past messages kept per player
     discussion_context_messages: int = Field(10, ge=0)  # discussion lines shown in a prompt
+    conversation_token_budget: int = Field(1200, ge=100)  # most tokens of conversation in one prompt
 
     # Show every player's role in the API (debug / spectator). Off: roles are
     # only visible for eliminated players.

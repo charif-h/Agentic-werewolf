@@ -28,13 +28,15 @@ def test_witch_stats_counts_understood_decisions():
 
 def test_discussion_stats():
     stats = bench.discussion_stats([
-        {"text": "I think Bob looks suspicious today."},
-        {"text": "I think Bob looks suspicious today."},
-        {"text": "As the seer I saw something. Really. Truly."},
-        {"text": "no comment"},
+        {"text": "I think Bob looks suspicious today.", "role": "villager"},
+        {"text": "I think Bob looks suspicious today.", "role": "villager"},
+        {"text": "As the seer I saw something. Really. Truly.", "role": "seer"},
+        {"text": "no comment", "role": "witch"},
     ])
     assert stats["no_comment"] == pytest.approx(0.25)
-    assert stats["role_leak"] == pytest.approx(1 / 3)
+    assert stats["role_leak"] == pytest.approx(1 / 3)           # "As the seer" from the seer
+    assert stats["role_word"] == pytest.approx(1 / 3)
+    assert stats["names_a_player"] == pytest.approx(2 / 3)
     assert stats["too_long"] == pytest.approx(1 / 3)
     assert stats["identical_answers"] == pytest.approx(1 / 3)
     assert 0 < stats["distinct_bigrams"] < 1
@@ -46,7 +48,8 @@ def test_markdown_table_has_one_column_per_model():
         "avg_answer_s": 0.5, "avg_prompt_tokens": 300, "errors": 0,
         "vote": {"exact": 1.0, "parsed": 1.0}, "night": {"exact": 0.5, "parsed": 1.0},
         "witch": {"understood": 0.75},
-        "discussion": {"no_comment": 0.1, "role_leak": 0.0, "too_long": 0.0, "avg_words": 12,
+        "discussion": {"no_comment": 0.1, "role_leak": 0.0, "role_word": 0.1, "names_a_player": 0.5,
+                       "too_long": 0.0, "avg_words": 12,
                        "distinct_bigrams": 0.9, "identical_answers": 0.0},
         "samples": {"discussion": ["hello"], "vote": ["Bob"], "night": ["Cy"]},
     }

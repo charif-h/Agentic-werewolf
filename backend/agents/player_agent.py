@@ -2,9 +2,10 @@
 Player AI Agent - Controls individual player behavior
 """
 import random
+import re
 from typing import Optional, Dict, Any, List
 from backend.models.game_models import PlayerProfile
-from backend.llm import ASSISTANT, SYSTEM, USER, LLMClient, Message
+from backend.llm import ASSISTANT, SYSTEM, USER, LLMClient, Message, fit_text
 from backend.config import get_settings
 from backend.game.targets import pick_target
 from backend import prompts
@@ -103,11 +104,22 @@ class PlayerAgent:
 
         response = self.llm.generate(messages)
 
-        # Store in memory as a conversation pair
-        self.memory.append(Message(USER, game_context))
-        self.memory.append(Message(ASSISTANT, response))
-
+        self._remember(context, response)
         return response
+
+    def _remember(self, question: str, answer: str) -> None:
+        """
+        Keep a short record of what was asked and answered (not the whole game
+        state, which is sent again in every prompt) and forget the oldest entries
+        """
+        self.memory.append(Message(USER, question))
+        self.memory.append(Message(ASSISTANT, answer))
+        limit = get_settings().memory_messages
+        self.memory = self.memory[-limit:] if limit else []
+
+    def _fit_conversation(self, conversation: str) -> str:
+        """Keep the most recent part of the conversation that fits the token budget"""
+        return fit_text(conversation, get_settings().conversation_token_budget)
 
     def night_action(self, game_state: Dict[str, Any]) -> Optional[str]:
         """
@@ -150,6 +162,7 @@ class PlayerAgent:
         Returns:
             Strategic comment or "no comment" if player chooses to stay silent
         """
+        conversation_history = self._fit_conversation(conversation_history)
         context = prompts.discussion_prompt(
             self.profile.name, conversation_history, alive_players, self.profile.role.value,
             self.handler.discussion_strategy,
@@ -158,18 +171,26 @@ class PlayerAgent:
         )
 
         try:
-            response = self._get_llm_response(context)
-
-            # Clean and validate response
-            response = response.strip()
-            if not response or response.lower() == "no comment":
-                return "no comment"
-
-            return response
+            response = self._clean_reply(self._get_llm_response(context))
+            if prompts.leaks_own_role(response, self.profile.role.value):
+                # Ask once more, with a reminder; give up (stay silent) if it happens again
+                response = self._clean_reply(self._get_llm_response(context + prompts.LEAK_REMINDER))
+                if prompts.leaks_own_role(response, self.profile.role.value):
+                    return prompts.NO_COMMENT
+            return response or prompts.NO_COMMENT
 
         except Exception:
             # Safe fallback if the API fails
-            return "no comment"
+            return prompts.NO_COMMENT
+
+    @staticmethod
+    def _clean_reply(text: str) -> str:
+        """Trim the answer and the quotes models like to put around speech"""
+        reply = text.strip().strip('"\u201c\u201d').strip()
+        if reply.lower().strip(". ") == prompts.NO_COMMENT:
+            return ""
+        # Models like to add "No comment." after a real sentence
+        return re.sub(r"(?i)[\s.!]*\bno comment\b[\s.!]*$", "", reply).strip() or ""
 
     def _should_respond_to_conversation(self, conversation_history: str) -> str:
         """
@@ -203,7 +224,7 @@ class PlayerAgent:
 
         context = prompts.vote_prompt(
             self.profile.name, self.profile.role.value, self.handler.voting_strategy,
-            conversation_history, other_players, self.knowledge,
+            self._fit_conversation(conversation_history), other_players, self.knowledge,
         )
 
         try:
