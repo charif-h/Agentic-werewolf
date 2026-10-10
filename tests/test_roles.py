@@ -75,9 +75,9 @@ def test_record_night():
 def test_night_prompt():
     assert get_handler(Role.GUARD).night_prompt(["Bob", "Cy"]) == (
         "As the guard, choose a player to protect tonight from these players: Bob, Cy. "
-        "Respond with ONLY the player's name.")
+        'Answer in JSON: {"target": "<name>"}.')
     assert get_handler(Role.WEREWOLF).night_prompt([]).endswith(
-        "You cannot target other werewolves. Respond with ONLY the player's name.")
+        'You cannot target other werewolves. Answer in JSON: {"target": "<name>"}.')
 
 
 def test_hunter_has_a_death_shot():

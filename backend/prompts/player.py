@@ -33,6 +33,13 @@ PERSONALITY_BEHAVIOR = {
 
 NO_COMMENT = "no comment"
 
+DISCUSSION_ANSWER_FORMAT = (
+    'Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two short sentences>"}. '
+    'If you really have nothing to add, answer {"speak": false, "message": ""}.')
+TARGET_ANSWER_FORMAT = 'Answer in JSON: {"target": "<name>"}.'
+WITCH_ANSWER_FORMAT = ('Answer in JSON: {"save": true or false, "poison": "<name>" or "none"}. '
+                       'Use true / a name only for a potion you still have.')
+
 ROLE_WORDS = ("werewolf", "werewolves", "villager", "villagers", "seer", "witch", "hunter", "guard")
 
 # Examples of short in-character replies (shown to the model in the discussion prompt)
@@ -128,7 +135,7 @@ Reasons to speak:
 Good replies look like this:
 {DISCUSSION_EXAMPLES}
 
-Say what you say out loud: one or two short sentences. If you really have nothing to add, answer exactly: {NO_COMMENT}"""
+{DISCUSSION_ANSWER_FORMAT}"""
 
 
 def vote_prompt(name: str, role: str, voting_strategy: str, conversation: str,
@@ -143,7 +150,7 @@ Conversation:
 
 Candidates: {', '.join(candidates)}
 
-Pick the player you find most suspicious. Answer with ONLY one name from the candidates."""
+Pick the player you find most suspicious. {TARGET_ANSWER_FORMAT}"""
 
 
 def witch_prompt(victim: Optional[str], can_save: bool, can_poison: bool,
@@ -153,19 +160,18 @@ def witch_prompt(victim: Optional[str], can_save: bool, can_poison: bool,
              else "As the witch, nobody was attacked tonight."]
     options = []
     if can_save:
-        options.append("SAVE (use your healing potion on the victim)")
+        options.append("save: use your healing potion on the victim")
     if can_poison:
-        options.append(f"POISON <name> (kill one player among: {', '.join(poison_targets)})")
-    options.append("PASS (do nothing)")
-    lines.append("Your options: " + "; ".join(options) + ".")
-    lines.append("Answer with exactly one of: " + ", ".join(
-        (["SAVE"] if can_save else []) + (["POISON <name>"] if can_poison else []) + ["PASS"]) + ".")
+        options.append(f"poison: kill one player among {', '.join(poison_targets)}")
+    lines.append("Your options: " + ("; ".join(options) + "; or do nothing." if options
+                                     else "do nothing, your potions are used."))
+    lines.append(WITCH_ANSWER_FORMAT)
     return " ".join(lines)
 
 
 def hunter_prompt(instruction: str, targets: List[str]) -> str:
     """Ask the dying hunter who to shoot"""
-    return f"{instruction} from these players: {', '.join(targets)}. Respond with ONLY the player's name."
+    return f"{instruction} from these players: {', '.join(targets)}. {TARGET_ANSWER_FORMAT}"
 
 
 def leaks_own_role(text: str, role: str) -> bool:

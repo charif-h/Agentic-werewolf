@@ -230,11 +230,13 @@ def test_knowledge_appears_in_prompts_only_when_present():
 
 def test_witch_and_hunter_prompts():
     text = prompts.witch_prompt("Cy", True, True, ["Bob", "Cy"])
-    assert "attacked Cy" in text and "SAVE" in text and "POISON <name>" in text and "PASS" in text
+    assert "attacked Cy" in text and "save: use your healing potion" in text
+    assert "poison: kill one player among Bob, Cy" in text and '"save": true or false' in text
     only_pass = prompts.witch_prompt(None, False, False, [])
-    assert "nobody was attacked" in only_pass and "SAVE" not in only_pass and "POISON" not in only_pass
+    assert "nobody was attacked" in only_pass and "potions are used" in only_pass
+    assert "save: use" not in only_pass and "poison: kill" not in only_pass
     assert prompts.hunter_prompt("Shoot", ["Bob", "Cy"]) == (
-        "Shoot from these players: Bob, Cy. Respond with ONLY the player's name.")
+        'Shoot from these players: Bob, Cy. Answer in JSON: {"target": "<name>"}.')
 
 
 def test_agent_remembers_facts_and_uses_them_in_every_prompt():
