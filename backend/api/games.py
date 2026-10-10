@@ -14,6 +14,7 @@ from backend.config import get_settings
 from backend.game.game_logic import WerewolfGame
 from backend.llm.factory import create_llm_client
 from backend.llm.health import check_model
+from backend.models.game_models import GamePhase
 from backend.services.phases import advance_phase
 from backend.services.sessions import GameSession
 
@@ -153,6 +154,11 @@ async def next_phase(game_id: str, background: bool = False):
     pushed to the WebSocket while the phase is played.
     """
     session = get_session(game_id)
+    phase = session.game.state.phase
+    if phase == GamePhase.SETUP:
+        raise HTTPException(status_code=409, detail="The game has not started yet: POST /start first")
+    if phase == GamePhase.ENDED:
+        raise HTTPException(status_code=409, detail="The game has ended")
     acquire(session)
 
     if background:

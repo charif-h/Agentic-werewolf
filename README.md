@@ -104,7 +104,7 @@ Each game has its own id, so several games can run at once. Idle games are remov
 | POST | `/api/games` | create a game, body `{"num_players": 8}`; returns `game_id` |
 | GET | `/api/games/{id}` | phase, day, players, last 20 log lines |
 | POST | `/api/games/{id}/start` | start the first night |
-| POST | `/api/games/{id}/next-phase` | run the current phase and move on; waits for the result, or answers 202 at once with `?background=true` (409 if a phase is already running) |
+| POST | `/api/games/{id}/next-phase` | run the current phase and move on; waits for the result, or answers 202 at once with `?background=true` (409 if a phase is already running, the game has not started, or it has ended) |
 | GET | `/api/games/{id}/players` | player profiles |
 | DELETE | `/api/games/{id}` | delete the game |
 | GET | `/api/model` | local model status: Ollama reachable? model installed? |
