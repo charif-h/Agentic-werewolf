@@ -141,8 +141,13 @@ See [docs/architecture.md](docs/architecture.md), [docs/model-benchmark.md](docs
 
 ```bash
 pip install -r backend/requirements-dev.txt
-python -m pytest tests
+python -m pytest                       # about 300 tests, 5 seconds, no GPU, no Ollama
+python -m pytest --cov=backend         # with coverage (about 98%)
+python -m pytest --run-realmodel       # also the tests marked `realmodel` (need Ollama and the model)
+ruff check .                           # lint
 ```
+
+The tests never talk to a real model: `tests/conftest.py` replaces the LLM client with a scripted `FakeLLMClient`. Settings for pytest and ruff are in `pyproject.toml`.
 
 ## Troubleshooting
 
