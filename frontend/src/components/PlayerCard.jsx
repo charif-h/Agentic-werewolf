@@ -18,8 +18,6 @@ const PlayerCard = ({ player }) => {
     return roleDisplayMap[role] || `🎭 ${role}`;
   };
 
-  // Debug log to check if role is present
-  console.log(`PlayerCard for ${player.name}: role = ${player.role}`);
 
   return (
     <div className={`player-card ${isDead ? 'dead' : ''}`}>

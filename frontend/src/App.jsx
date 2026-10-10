@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
-import gameApi from './services/api';
-import PlayerCard from './components/PlayerCard';
-import GameLog from './components/GameLog';
+import gameApi from './services/api.js';
+import PlayerCard from './components/PlayerCard.jsx';
+import GameLog from './components/GameLog.jsx';
 
 function App() {
   const [gameId, setGameId] = useState(null);

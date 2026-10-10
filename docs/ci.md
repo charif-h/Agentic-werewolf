@@ -5,7 +5,7 @@
 | Job | Steps | Needs |
 |---|---|---|
 | Backend | `pip install` (runtime + dev requirements), `ruff check .`, `pytest --cov=backend` | Python 3.11 only. The tests use a scripted fake model: **no GPU, no Ollama**. |
-| Frontend | `npm ci`, `npm run lint`, `npm run build` | Node 20 |
+| Frontend | `npm ci`, `npm run lint`, `npm test` (Vitest), `npm run build` (Vite) | Node 20 |
 
 A new push to the same branch cancels the run that is still going. Pip and npm downloads are cached.
 
@@ -14,7 +14,7 @@ You can run exactly the same checks locally:
 ```bash
 pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 ruff check . && python -m pytest --cov=backend
-cd frontend && npm ci && npm run lint && npm run build
+cd frontend && npm ci && npm run lint && npm test && npm run build
 ```
 
 ## Optional: smoke test against the real model (`.github/workflows/real-model-smoke.yml`)
