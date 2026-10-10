@@ -147,6 +147,8 @@ python -m pytest --run-realmodel       # also the tests marked `realmodel` (need
 ruff check .                           # lint
 ```
 
+Prompt changes show up in review: `tests/snapshots/` holds the exact text of every prompt the model receives. After changing a prompt on purpose, run `UPDATE_SNAPSHOTS=1 python -m pytest tests/test_prompt_snapshots.py` and review the diff.
+
 The tests never talk to a real model: `tests/conftest.py` replaces the LLM client with a scripted `FakeLLMClient`. Settings for pytest and ruff are in `pyproject.toml`.
 
 ## Troubleshooting
