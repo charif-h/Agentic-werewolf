@@ -1,5 +1,7 @@
 # Agentic Werewolf
 
+[![CI](https://github.com/charif-h/Agentic-werewolf/actions/workflows/ci.yml/badge.svg)](https://github.com/charif-h/Agentic-werewolf/actions/workflows/ci.yml)
+
 An AI-driven version of *The Werewolves of Millers Hollow*. Every player is an LLM agent with a random profile (name, sex, age, one of the 16 MBTI personalities) and a secret role. A rule-based Game Master (templates, no LLM) narrates. You watch the game in a React UI.
 
 > **Status:** prototype. Every player runs on a **local Gemma model** through [Ollama](https://ollama.com): no API key, no cloud, nothing leaves your machine.
@@ -148,6 +150,8 @@ ruff check .                           # lint
 ```
 
 Prompt changes show up in review: `tests/snapshots/` holds the exact text of every prompt the model receives. After changing a prompt on purpose, run `UPDATE_SNAPSHOTS=1 python -m pytest tests/test_prompt_snapshots.py` and review the diff.
+
+GitHub Actions runs the lint, the tests and the frontend build on every push and pull request; see [docs/ci.md](docs/ci.md), which also explains the optional real-model smoke test.
 
 The tests never talk to a real model: `tests/conftest.py` replaces the LLM client with a scripted `FakeLLMClient`. Settings for pytest and ruff are in `pyproject.toml`.
 
