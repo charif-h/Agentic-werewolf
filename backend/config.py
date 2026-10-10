@@ -26,12 +26,15 @@ class Settings(BaseSettings):
     llm_num_ctx: int = Field(4096, ge=512)             # context window in tokens
     llm_keep_alive: str = "30m"                        # how long the model stays loaded
     llm_timeout: float = Field(120.0, gt=0)            # seconds per answer
+    llm_max_parallel: int = Field(1, ge=1)             # requests in flight at once (match OLLAMA_NUM_PARALLEL)
+    llm_warmup: bool = True                            # load the model when the server starts
 
     # --- Game -------------------------------------------------------------
     default_players: int = Field(8, ge=1)
     min_players: int = Field(4, ge=1)
     max_players: int = Field(12, ge=1)
     discussion_max_rounds: int = Field(5, ge=1)
+    discussion_gate: bool = True    # skip the turns of players with nothing pressing to say (saves model calls)
     memory_messages: int = Field(4, ge=0)          # past messages kept per player
     discussion_context_messages: int = Field(10, ge=0)  # discussion lines shown in a prompt
     conversation_token_budget: int = Field(1200, ge=100)  # most tokens of conversation in one prompt

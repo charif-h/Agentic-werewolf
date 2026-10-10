@@ -73,13 +73,15 @@ async def delete_game(game_id: str):
 @router.get("/{game_id}")
 async def get_game_state(game_id: str):
     """Get current game state"""
-    game_state = get_session(game_id).game.state
+    session = get_session(game_id)
+    game_state = session.game.state
     return {
         "game_id": game_id,
         "phase": game_state.phase.value,
         "day_number": game_state.day_number,
         "players": [serialize_player(p) for p in game_state.players],
-        "game_log": game_state.game_log[-20:]  # Last 20 entries
+        "game_log": game_state.game_log[-20:],  # Last 20 entries
+        "llm": session.game.metrics.snapshot(),  # model calls, tokens and time of this game
     }
 
 

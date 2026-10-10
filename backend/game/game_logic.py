@@ -19,7 +19,9 @@ from backend.agents.profile_generator import generate_all_players
 from backend.agents.player_agent import PlayerAgent
 from backend.game.game_master import GameMaster
 from backend.game.targets import parse_witch_answer, pick_target
+from backend.game.talkativeness import should_speak
 from backend.llm import LLMClient
+from backend.llm.metrics import LLMMetrics
 from backend.llm.factory import create_llm_client
 
 
@@ -42,6 +44,7 @@ class WerewolfGame:
         self.state = GameState()
         self.player_agents: Dict[str, PlayerAgent] = {}
         self.game_master = GameMaster()
+        self.metrics = LLMMetrics()      # model calls made for this game
         # Optional callback(event_type, data) for live progress (player_spoke, vote_cast);
         # it is called from whatever thread plays the phase
         self.on_event: Optional[Callable[[str, dict], None]] = None
@@ -271,6 +274,7 @@ class WerewolfGame:
             messages=[]
         )
 
+        spoke_last_round = set()
         for discussion_round in range(1, max_rounds + 1):
             round_speech_count = 0
 
@@ -278,12 +282,21 @@ class WerewolfGame:
             shuffled_players = alive_players.copy()
             random.shuffle(shuffled_players)
 
+            spoke_this_round = set()
+
             # Build current conversation context for this round
             current_conversation = ""
             if discussion.messages:
                 current_conversation = "\n".join([f"[{msg.sender}] {msg.content}" for msg in discussion.messages])
 
-            for player in shuffled_players:
+            for index, player in enumerate(shuffled_players):
+                # Players with nothing pressing to say skip their turn, which saves a model
+                # call. The first turn of the day is never skipped, so someone opens the talk.
+                opening_turn = discussion_round == 1 and index == 0
+                if (settings.discussion_gate and not opening_turn
+                        and not should_speak(player, current_conversation, player.name in spoke_last_round)):
+                    self.metrics.add_skipped_turn()
+                    continue
                 try:
                     agent = self.player_agents[player.id]
 
@@ -296,6 +309,7 @@ class WerewolfGame:
                         messages.append(message_text)
                         self.state.game_log.append(message_text)
                         round_speech_count += 1
+                        spoke_this_round.add(player.name)
                         self._emit("player_spoke", {"sender": player.name, "content": comment})
 
                         # Add to structured discussion
@@ -316,6 +330,8 @@ class WerewolfGame:
                     # A player whose model call fails stays silent this round
                     logger.warning("Error with player %s: %s", player.name, e)
                     continue
+
+            spoke_last_round = spoke_this_round
 
             # Rule-based Game Master decides whether to play another round
             if not self.game_master.should_continue_discussion(
@@ -412,6 +428,10 @@ class WerewolfGame:
         survivors = rules.end_game(self.state)
         announcement = self.game_master.announce_winner(winner, survivors)
         self.state.game_log.append(f"[GAME MASTER] {announcement}")
+        stats = self.metrics.snapshot()
+        logger.info("Game over (%s win): %s model calls (%s skipped turns), %s tokens, %.0f s of model time",
+                    winner, stats["calls"], stats["skipped_turns"],
+                    stats["prompt_tokens"] + stats["completion_tokens"], stats["seconds"])
 
         return announcement
 

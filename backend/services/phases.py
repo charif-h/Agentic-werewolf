@@ -8,6 +8,7 @@ code must call it from a worker thread.
 from typing import Callable, Dict
 
 from backend.game.game_logic import WerewolfGame
+from backend.llm.metrics import track
 from backend.models.game_models import GamePhase
 
 
@@ -76,4 +77,5 @@ def advance_phase(game: WerewolfGame) -> Dict:
     transition = TRANSITIONS.get(game.state.phase)
     if transition is None:
         return {"error": f"Unknown phase: {game.state.phase.value}"}
-    return transition(game)
+    with track(game.metrics):             # count this game's model calls
+        return transition(game)

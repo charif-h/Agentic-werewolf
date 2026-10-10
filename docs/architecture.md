@@ -24,7 +24,7 @@ State lives in memory: one `WerewolfGame` per session, kept in a `SessionManager
 | `backend/game/game_master.py` | `GameMaster`: template announcements (night, day, elimination, winner) and the rule that decides when discussion ends. No LLM calls. |
 | `backend/agents/profile_generator.py` | Random unique names, sex, age (18-80), MBTI personality. |
 | `backend/llm/schemas.py` | JSON schemas for the decisions players make (a target restricted to the valid names with an `enum`, the discussion `{speak, message}`, the witch's `{save, poison}`) and the parsers for the answers. Ollama's `format` option makes the model produce only matching JSON, so votes and night targets are always valid names. When the model is unreachable or the answer is not valid, the game uses a random valid target (never a potion). |
-| `backend/llm/` | The `LLMClient` interface (`generate(messages, max_tokens, temperature, json_schema) -> str`), `Message`, `OllamaClient` (HTTP client for a local Ollama server; also reports whether the model is installed), and a scripted `FakeLLMClient` for tests. One client is shared by every game and every player. |
+| `backend/llm/` | The `LLMClient` interface (`generate(messages, max_tokens, temperature, json_schema) -> str`), `Message`, `OllamaClient` (HTTP client for a local Ollama server: queues calls for `LLM_MAX_PARALLEL` slots, warms the model up, reports whether it is installed, counts calls/tokens/time), and a scripted `FakeLLMClient` for tests. One client is shared by every game and every player. |
 | `backend/models/game_models.py` | Pydantic models and enums: `PlayerProfile`, `GameState`, `Discussion`, `Message`, `Role`, `GamePhase`, `PlayerStatus`, `PersonalityType`, `Sex`. |
 
 ## Phase flow
@@ -36,6 +36,13 @@ State lives in memory: one `WerewolfGame` per session, kept in a `SessionManager
 | night | werewolf (first one only) picks a target, guard protects, seer checks; then the witch is told the victim and may heal and/or poison; kill applied unless protected or healed; a dead hunter shoots; day announced | day |
 | day | `conduct_discussion(max_rounds=5)`: players in random order may speak or say "no comment"; the Game Master ends it after a silent round (from round 2), at max rounds, or from round 3 when fewer than max(2, players/3) people spoke | discussion |
 | discussion | every player votes independently; most votes is eliminated (ties random); win condition checked | night or ended |
+
+## Performance on one GPU
+
+* **One request at a time.** All games share one `OllamaClient`; its calls queue for `LLM_MAX_PARALLEL` slots (default 1), so ten games never fire ten requests at the GPU together. Time spent queued is reported as `wait_seconds`.
+* **Model stays loaded.** `keep_alive` keeps it in memory between calls and the server loads it at startup (`LLM_WARMUP`), so the first game does not wait ~10 to 50 s.
+* **Fewer calls.** In the discussion, `game/talkativeness.py` decides without any model call whether a player takes their turn: extraverts talk more than introverts, someone who spoke last round talks less, and a player who was just named always answers. The first turn of the day is never skipped.
+* **Metrics per game.** `GET /api/games/{id}` returns `llm`: calls, errors, skipped turns, prompt/completion tokens, tokens per second, seconds of model time, seconds waiting. The totals for the whole server are in `OllamaClient.metrics()`; a summary of each game is logged when it ends.
 
 ## Frontend
 
