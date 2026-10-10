@@ -1,0 +1,56 @@
+name: Real-model smoke test
+
+# Manual only: needs a self-hosted runner that has Ollama and the model installed.
+# Register a runner with the label "ollama" (see docs/ci.md), then run this workflow
+# from the Actions tab.
+on:
+  workflow_dispatch:
+    inputs:
+      games:
+        description: "Number of games to play"
+        default: "3"
+      players:
+        description: "Players per game"
+        default: "6"
+      model:
+        description: "Ollama model tag (empty = LLM_MODEL from the settings)"
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: [self-hosted, ollama]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Check that the model is available
+        run: python -c "from backend.llm.factory import create_llm_client as c; s = c().status(); print(s); raise SystemExit(0 if s['reachable'] and s['installed'] else 1)"
+
+      - name: Play games against the real model
+        run: >
+          python scripts/simulate.py
+          --games ${{ inputs.games }} --players ${{ inputs.players }}
+          ${{ inputs.model != '' && format('--model {0}', inputs.model) || '' }}
+          --json simulation.json --markdown simulation.md
+
+      - name: Show the report
+        if: always()
+        run: cat simulation.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: simulation
+          path: |
+            simulation.json
+            simulation.md
