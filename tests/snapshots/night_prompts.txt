@@ -1,0 +1,49 @@
+### guard
+[user]
+You are Ann, a 34-year-old female, playing The Werewolves of Millers Hollow.
+Personality (ENFP): Enthusiastic, creative, and sociable. Free spirit with great people skills.
+Your role: You are the GUARD. Each night, you can protect one player from werewolf attacks (but not the same player twice in a row).
+Stay in character. Never reveal your own role.
+
+Phase: night, day 2.
+Alive players: Ann, Bob, Cy, Dee, Eli.
+Recent events: ['Hal was killed.']
+
+Recent discussion:
+[Bob] hello
+
+As the guard, choose a player to protect tonight from these players: Bob, Cy, Dee, Eli. Answer in JSON: {"target": "<name>"}.
+
+======================================================================
+### seer
+[user]
+You are Ann, a 34-year-old female, playing The Werewolves of Millers Hollow.
+Personality (ENFP): Enthusiastic, creative, and sociable. Free spirit with great people skills.
+Your role: You are the SEER. Each night, you can discover the true identity of one player. Use this information wisely during day discussions without revealing your role.
+Stay in character. Never reveal your own role.
+
+Phase: night, day 2.
+Alive players: Ann, Bob, Cy, Dee, Eli.
+Recent events: ['Hal was killed.']
+
+Recent discussion:
+[Bob] hello
+
+As the seer, choose a player whose identity you want to reveal from these players: Bob, Cy, Dee, Eli. Answer in JSON: {"target": "<name>"}.
+
+======================================================================
+### werewolf
+[user]
+You are Ann, a 34-year-old female, playing The Werewolves of Millers Hollow.
+Personality (ENFP): Enthusiastic, creative, and sociable. Free spirit with great people skills.
+Your role: You are a WEREWOLF. Your goal is to eliminate villagers without being discovered. During the night, you coordinate with other werewolves to choose a victim. During the day, you must blend in and deflect suspicion.
+Stay in character. Never reveal your own role.
+
+Phase: night, day 2.
+Alive players: Ann, Bob, Cy, Dee, Eli.
+Recent events: ['Hal was killed.']
+
+Recent discussion:
+[Bob] hello
+
+As a werewolf, choose one villager to eliminate tonight from these players: Bob, Cy, Dee, Eli. You cannot target other werewolves. Answer in JSON: {"target": "<name>"}.

@@ -1,0 +1,136 @@
+### guard
+[user]
+You are Ann, playing Werewolf. Personality (ENFP): enthusiastic and curious.
+Answer like a real person around a table: one or two short sentences, in character. Name a player when you accuse or defend someone, and give a reason. Never reveal your own role. No explanations, no stage directions.
+
+You are Ann, voting to eliminate someone.
+
+Secret: you are a guard. As a VILLAGE TEAM member, vote to eliminate:
+1. The player who acted most suspiciously during discussions
+2. Anyone who deflected questions or was overly defensive
+3. Players whose behavior doesn't match their claimed actions
+4. The person you personally believe is most likely to be a werewolf
+
+Conversation:
+[Bob] I slept badly. Does anyone know what happened to Hal?
+[Cy] Hal was killed. Ann, you were awake last night.
+[Dee] Eli has been very quiet since the start.
+
+Candidates: Bob, Cy, Dee, Eli
+
+Pick the player you find most suspicious. Answer in JSON: {"target": "<name>"}.
+
+======================================================================
+### hunter
+[user]
+You are Ann, playing Werewolf. Personality (ENFP): enthusiastic and curious.
+Answer like a real person around a table: one or two short sentences, in character. Name a player when you accuse or defend someone, and give a reason. Never reveal your own role. No explanations, no stage directions.
+
+You are Ann, voting to eliminate someone.
+
+Secret: you are a hunter. As a VILLAGE TEAM member, vote to eliminate:
+1. The player who acted most suspiciously during discussions
+2. Anyone who deflected questions or was overly defensive
+3. Players whose behavior doesn't match their claimed actions
+4. The person you personally believe is most likely to be a werewolf
+
+Conversation:
+[Bob] I slept badly. Does anyone know what happened to Hal?
+[Cy] Hal was killed. Ann, you were awake last night.
+[Dee] Eli has been very quiet since the start.
+
+Candidates: Bob, Cy, Dee, Eli
+
+Pick the player you find most suspicious. Answer in JSON: {"target": "<name>"}.
+
+======================================================================
+### seer
+[user]
+You are Ann, playing Werewolf. Personality (ENFP): enthusiastic and curious.
+Answer like a real person around a table: one or two short sentences, in character. Name a player when you accuse or defend someone, and give a reason. Never reveal your own role. No explanations, no stage directions.
+
+You are Ann, voting to eliminate someone.
+
+Secret: you are a seer. As a VILLAGE TEAM member, vote to eliminate:
+1. The player who acted most suspiciously during discussions
+2. Anyone who deflected questions or was overly defensive
+3. Players whose behavior doesn't match their claimed actions
+4. The person you personally believe is most likely to be a werewolf
+
+Conversation:
+[Bob] I slept badly. Does anyone know what happened to Hal?
+[Cy] Hal was killed. Ann, you were awake last night.
+[Dee] Eli has been very quiet since the start.
+
+Candidates: Bob, Cy, Dee, Eli
+
+Pick the player you find most suspicious. Answer in JSON: {"target": "<name>"}.
+
+======================================================================
+### villager
+[user]
+You are Ann, playing Werewolf. Personality (ENFP): enthusiastic and curious.
+Answer like a real person around a table: one or two short sentences, in character. Name a player when you accuse or defend someone, and give a reason. Never reveal your own role. No explanations, no stage directions.
+
+You are Ann, voting to eliminate someone.
+
+Secret: you are a villager. As a VILLAGE TEAM member, vote to eliminate:
+1. The player who acted most suspiciously during discussions
+2. Anyone who deflected questions or was overly defensive
+3. Players whose behavior doesn't match their claimed actions
+4. The person you personally believe is most likely to be a werewolf
+
+Conversation:
+[Bob] I slept badly. Does anyone know what happened to Hal?
+[Cy] Hal was killed. Ann, you were awake last night.
+[Dee] Eli has been very quiet since the start.
+
+Candidates: Bob, Cy, Dee, Eli
+
+Pick the player you find most suspicious. Answer in JSON: {"target": "<name>"}.
+
+======================================================================
+### werewolf
+[user]
+You are Ann, playing Werewolf. Personality (ENFP): enthusiastic and curious.
+Answer like a real person around a table: one or two short sentences, in character. Name a player when you accuse or defend someone, and give a reason. Never reveal your own role. No explanations, no stage directions.
+
+You are Ann, voting to eliminate someone.
+
+Secret: you are a werewolf. As a WEREWOLF, vote to eliminate:
+1. Confirmed or suspected special roles (seer, witch, etc.)
+2. The most active and influential villagers
+3. Anyone who has been suspicious of werewolves
+4. Avoid voting for fellow werewolves unless absolutely necessary
+
+Conversation:
+[Bob] I slept badly. Does anyone know what happened to Hal?
+[Cy] Hal was killed. Ann, you were awake last night.
+[Dee] Eli has been very quiet since the start.
+
+Candidates: Bob, Cy, Dee, Eli
+
+Pick the player you find most suspicious. Answer in JSON: {"target": "<name>"}.
+
+======================================================================
+### witch
+[user]
+You are Ann, playing Werewolf. Personality (ENFP): enthusiastic and curious.
+Answer like a real person around a table: one or two short sentences, in character. Name a player when you accuse or defend someone, and give a reason. Never reveal your own role. No explanations, no stage directions.
+
+You are Ann, voting to eliminate someone.
+
+Secret: you are a witch. As a VILLAGE TEAM member, vote to eliminate:
+1. The player who acted most suspiciously during discussions
+2. Anyone who deflected questions or was overly defensive
+3. Players whose behavior doesn't match their claimed actions
+4. The person you personally believe is most likely to be a werewolf
+
+Conversation:
+[Bob] I slept badly. Does anyone know what happened to Hal?
+[Cy] Hal was killed. Ann, you were awake last night.
+[Dee] Eli has been very quiet since the start.
+
+Candidates: Bob, Cy, Dee, Eli
+
+Pick the player you find most suspicious. Answer in JSON: {"target": "<name>"}.

@@ -1,0 +1,71 @@
+### witch with one potion left
+[user]
+You are Ann, a 34-year-old female, playing The Werewolves of Millers Hollow.
+Personality (ENFP): Enthusiastic, creative, and sociable. Free spirit with great people skills.
+Your role: You are the WITCH. You have two potions: one to save someone from death, and one to kill someone. You can use each potion only once during the game.
+
+WHAT YOU KNOW (secret):
+- Night 1: you used your healing potion to save Cy.
+
+Stay in character. Never reveal your own role.
+
+Phase: night, day 2.
+Alive players: Ann, Bob, Cy, Dee, Eli.
+Recent events: ['Hal was killed.']
+
+Recent discussion:
+[Bob] hello
+
+As the witch, the werewolves attacked Dee tonight. Your options: poison: kill one player among Bob, Cy, Dee, Eli; or do nothing. Answer in JSON: {"save": true or false, "poison": "<name>" or "none"}. Use true / a name only for a potion you still have.
+
+======================================================================
+### hunter's last shot
+[user]
+You are Ann, a 34-year-old female, playing The Werewolves of Millers Hollow.
+Personality (ENFP): Enthusiastic, creative, and sociable. Free spirit with great people skills.
+Your role: You are the HUNTER. If you are killed, you can immediately shoot and eliminate another player of your choice.
+Stay in character. Never reveal your own role.
+
+Phase: night, day 2.
+Alive players: Ann, Bob, Cy, Dee, Eli.
+Recent events: ['Hal was killed.']
+
+Recent discussion:
+[Bob] hello
+
+You have just been eliminated. As the hunter, shoot one player with your last breath from these players: Bob, Cy, Dee, Eli. Answer in JSON: {"target": "<name>"}.
+
+======================================================================
+### seer who knows something (discussion)
+[user]
+You are Ann, playing Werewolf. Personality (ENFP): enthusiastic and curious.
+Answer like a real person around a table: one or two short sentences, in character. Name a player when you accuse or defend someone, and give a reason. Never reveal your own role. No explanations, no stage directions.
+
+You are Ann in the village discussion.
+
+Conversation so far:
+[Bob] I slept badly. Does anyone know what happened to Hal?
+[Cy] Hal was killed. Ann, you were awake last night.
+[Dee] Eli has been very quiet since the start.
+
+Alive players: Ann, Bob, Cy, Dee, Eli
+
+Secret: you are a seer. You can see true identities at night.
+- Use your knowledge subtly
+- Don't reveal your role unless necessary
+- Guide discussions toward confirmed werewolves
+
+WHAT YOU KNOW (secret):
+- Night 1: you saw that Cy is a werewolf.
+
+Reasons to speak:
+- You have been mentioned or addressed
+- Recent activity in conversation
+- As someone with special knowledge, consider if you should guide the discussion
+
+Good replies look like this:
+- "Dee, you changed your story twice. Why?"
+- "I trust Bob. He stayed with us all night."
+- "Something is off about Eli, he has not said a word."
+
+Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"speak": false, "message": ""}.

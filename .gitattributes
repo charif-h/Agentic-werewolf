@@ -1,0 +1,3 @@
+# Keep line endings stable across Windows and Linux (CI, Docker)
+*.sh text eol=lf
+tests/snapshots/*.txt text eol=lf
