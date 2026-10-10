@@ -17,7 +17,7 @@ class LLMMetrics:
             self._data = {"calls": 0, "errors": 0, "prompt_tokens": 0, "completion_tokens": 0,
                           "seconds": 0.0, "generation_seconds": 0.0, "load_seconds": 0.0,
                           "wait_seconds": 0.0, "skipped_turns": 0,
-                          "invalid_answers": 0, "role_leaks": 0}
+                          "invalid_answers": 0, "role_leaks": 0, "repeated_lines": 0}
 
     def add_call(self, seconds: float, wait_seconds: float = 0.0,
                  answer: Optional[Dict[str, Any]] = None) -> None:
@@ -50,6 +50,11 @@ class LLMMetrics:
         """Count an answer that could not be used (not valid JSON, name not allowed, model down)"""
         with self._lock:
             self._data["invalid_answers"] += 1
+
+    def add_repeated_line(self) -> None:
+        """Count a discussion line dropped because it only repeated what was just said"""
+        with self._lock:
+            self._data["repeated_lines"] += 1
 
     def add_role_leak(self) -> None:
         """Count a discussion line in which the speaker stated their own role"""

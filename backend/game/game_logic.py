@@ -19,7 +19,7 @@ from backend.agents.profile_generator import generate_all_players
 from backend.agents.player_agent import PlayerAgent
 from backend.game.game_master import GameMaster
 from backend.game.targets import parse_witch_answer, pick_target
-from backend.game.talkativeness import should_speak
+from backend.game.talkativeness import is_repetition, should_speak
 from backend.llm import LLMClient
 from backend.llm.metrics import LLMMetrics
 from backend.llm.factory import create_llm_client
@@ -275,6 +275,7 @@ class WerewolfGame:
         )
 
         spoke_last_round = set()
+        last_spoke_at = {}  # player name -> index of their latest message in this discussion
         for discussion_round in range(1, max_rounds + 1):
             round_speech_count = 0
 
@@ -293,8 +294,10 @@ class WerewolfGame:
                 # Players with nothing pressing to say skip their turn, which saves a model
                 # call. The first turn of the day is never skipped, so someone opens the talk.
                 opening_turn = discussion_round == 1 and index == 0
+                since_spoke = len(discussion.messages) - last_spoke_at.get(player.name, -1) - 1
                 if (settings.discussion_gate and not opening_turn
-                        and not should_speak(player, current_conversation, player.name in spoke_last_round)):
+                        and not should_speak(player, current_conversation, player.name in spoke_last_round,
+                                             messages_since_spoke=since_spoke)):
                     self.metrics.add_skipped_turn()
                     continue
                 try:
@@ -304,7 +307,12 @@ class WerewolfGame:
                     comment = agent.discuss(current_conversation, alive_names)
 
                     # Filter out "no comment" responses
-                    if comment and comment.strip() and comment.strip().lower() != "no comment":
+                    spoken = bool(comment and comment.strip() and comment.strip().lower() != "no comment")
+                    if spoken and settings.discussion_gate and is_repetition(
+                            comment, [m.content for m in discussion.messages]):
+                        # Only repeats what was just said: nobody learns anything, so it is not published
+                        self.metrics.add_repeated_line()
+                    elif spoken:
                         message_text = f"[{player.name}] {comment}"
                         messages.append(message_text)
                         self.state.game_log.append(message_text)
@@ -320,6 +328,7 @@ class WerewolfGame:
                             message_type="dynamic_comment"
                         )
                         discussion.messages.append(message)
+                        last_spoke_at[player.name] = len(discussion.messages) - 1
 
                         # Update conversation immediately so next players see this comment
                         current_conversation = "\n".join([f"[{msg.sender}] {msg.content}" for msg in discussion.messages])

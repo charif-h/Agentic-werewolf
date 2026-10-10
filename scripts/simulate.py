@@ -80,6 +80,7 @@ def run_game(num_players: int, llm) -> Dict[str, Any]:
         "invalid_answers": stats["invalid_answers"],
         "role_leaks": stats["role_leaks"],
         "skipped_turns": stats["skipped_turns"],
+        "repeated_lines": stats["repeated_lines"],
         "model_seconds": stats["seconds"],
         "tokens": stats["prompt_tokens"] + stats["completion_tokens"],
     }
@@ -103,6 +104,7 @@ def summarize(games: List[Dict[str, Any]]) -> Dict[str, Any]:
         "model_error_rate": sum(g["model_errors"] for g in games) / calls if calls else 0.0,
         "role_leaks": sum(g["role_leaks"] for g in games),
         "skipped_turns": sum(g["skipped_turns"] for g in games),
+        "repeated_lines": sum(g.get("repeated_lines", 0) for g in games),
         "avg_tokens_per_game": sum(g["tokens"] for g in games) / total,
     }
 
@@ -120,6 +122,7 @@ def to_markdown(summary: Dict[str, Any], model: str, players: int) -> str:
         ("Model error rate", f"{summary['model_error_rate'] * 100:.1f}%"),
         ("Role leaks (own role stated)", str(summary["role_leaks"])),
         ("Discussion turns skipped", str(summary["skipped_turns"])),
+        ("Repeated lines not published", str(summary["repeated_lines"])),
         ("Tokens per game", f"{summary['avg_tokens_per_game']:.0f}"),
     ]
     table = "| Metric | Value |\n|---|---|\n" + "".join(f"| {k} | {v} |\n" for k, v in rows)
