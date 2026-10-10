@@ -162,7 +162,7 @@ The tests never talk to a real model: `tests/conftest.py` replaces the LLM clien
 - **"Model ... is not installed"**: run `ollama pull gemma3:4b` (or the model set in `LLM_MODEL`).
 - **The first answer takes a minute**: the model is being loaded into memory; later answers take well under a second.
 - **Python import errors**: run uvicorn from the project root, as `python -m uvicorn backend.main:app`.
-- **Port in use**: change `--port` for uvicorn, or `npm run dev -- --port 3001` for the frontend (the dev server forwards `/api` and `/ws` to `http://localhost:8000`, change it with `VITE_BACKEND_URL`).
+- **Port in use**: change `--port` for uvicorn, or `npm run dev -- --port 3001` for the frontend (the dev server forwards `/api` and `/ws` to `http://127.0.0.1:8000`, change it with `VITE_BACKEND_URL`).
 - **Frontend cannot reach the backend**: check that the backend is running on port 8000 (`VITE_BACKEND_URL` if not).
 - **Docker build problems**: `docker compose down` then `docker compose up --build`.
 
