@@ -120,6 +120,19 @@ Votes, night targets, the witch's potions, the hunter's shot and the discussion 
 * The speed columns of this run are noisier than the earlier ones (other work was using the GPU while it ran): compare quality columns across runs, not seconds.
 * Discussion quality is unchanged: 92 to 100% of the lines name another player, nobody states their own role.
 
+## How long does a game take?
+
+Real 8-player games with `gemma3:4b` (warm model, RTX 3070 Ti Laptop), three games per setting, played through the same code as the server. Games differ in length (2 to 3 days), so the numbers are indicative, not a precise comparison.
+
+| | `DISCUSSION_GATE=false` | `DISCUSSION_GATE=true` (default) |
+|---|---|---|
+| Model calls per game | 96, 76, 76 (mean 83) | 68, 80, 62 (mean 70) |
+| Turns skipped without a call | 0 | 8, 13, 13 |
+| Wall-clock time per game | 137, 89, 126 s (mean 117 s) | 90, 100, 74 s (mean 88 s) |
+| Tokens per game (prompt + answer) | about 62k + 5k | about 45k + 4k |
+
+A game takes 1.5 to 2.5 minutes, nearly all of it model time (the call queue never made anything wait: `wait_seconds` is 0 with a single game). The first game after starting Ollama adds the model load (9 s measured here, up to about 50 s from a cold disk), which the startup warm-up moves out of the first game.
+
 ## Reading the results
 
 * **Validity is not a problem for any model.** All four give a usable name 100% of the time after parsing. The 4B QAT model is the least disciplined (62% bare names for night targets; one sample wrote a paragraph with markdown), which is the reason to use JSON-schema output (issue #23) instead of parsing prose.
