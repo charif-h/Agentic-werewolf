@@ -11,6 +11,7 @@ export const initialState = {
   speaking: null, // name of the last player who spoke (live indicator)
   winner: null,
   llm: null, // model usage of this game (calls, tokens, time)
+  rolesRevealed: false, // the server sends everybody's role (REVEAL_ROLES), so spectating is possible
   error: null,
 };
 
@@ -36,6 +37,7 @@ export function gameReducer(state, action) {
         players: players || game.players,
         log: game.game_log || [],
         llm: game.llm || null,
+        rolesRevealed: Boolean(game.roles_revealed),
         winner: game.phase === 'ended' ? state.winner : null,
       };
     }

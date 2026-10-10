@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import './App.css';
 import PlayerCard from './components/PlayerCard.jsx';
 import GameLog from './components/GameLog.jsx';
 import LlmStats from './components/LlmStats.jsx';
 import ModelStatus from './components/ModelStatus.jsx';
+import { NightSummary, VoteTally } from './components/Summaries.jsx';
 import { useGame } from './hooks/useGame.js';
 import { useModelStatus } from './hooks/useModelStatus.js';
 
@@ -26,6 +27,8 @@ const CONNECTION_LABELS = {
 function App() {
   const { state, createGame, startGame, nextPhase, refresh } = useGame();
   const model = useModelStatus();
+  const [spectate, setSpectate] = useState(false); // show the roles of living players
+  const showRoles = spectate && state.rolesRevealed;
 
   const alivePlayers = state.players.filter((p) => p.status === 'alive');
   const deadPlayers = state.players.filter((p) => p.status === 'dead');
@@ -65,6 +68,22 @@ function App() {
           </button>
         )}
         {hasGame && (
+          <label
+            className="spectator"
+            title={state.rolesRevealed
+              ? 'Show the secret roles of the living players'
+              : 'The server hides the roles. Start it with REVEAL_ROLES=true to spectate.'}
+          >
+            <input
+              type="checkbox"
+              checked={showRoles}
+              disabled={!state.rolesRevealed}
+              onChange={(e) => setSpectate(e.target.checked)}
+            />{' '}
+            Spectator mode
+          </label>
+        )}
+        {hasGame && (
           <span className={`connection ${state.connection}`} title="Live connection to the game">
             ● {CONNECTION_LABELS[state.connection]}
           </span>
@@ -88,7 +107,7 @@ function App() {
           <div className="players-panel">
             <h2>Players ({alivePlayers.length} alive)</h2>
             {alivePlayers.map((player) => (
-              <PlayerCard key={player.id} player={player} />
+              <PlayerCard key={player.id} player={player} showRole={showRoles} />
             ))}
             {deadPlayers.length > 0 && (
               <>
@@ -96,7 +115,7 @@ function App() {
                   Eliminated ({deadPlayers.length})
                 </h2>
                 {deadPlayers.map((player) => (
-                  <PlayerCard key={player.id} player={player} />
+                  <PlayerCard key={player.id} player={player} showRole={showRoles} />
                 ))}
               </>
             )}
@@ -109,6 +128,11 @@ function App() {
             </div>
 
             <LlmStats llm={state.llm} />
+
+            <div className="summaries">
+              <NightSummary log={state.log} />
+              <VoteTally log={state.log} />
+            </div>
 
             <GameLog logs={state.log} />
           </div>
