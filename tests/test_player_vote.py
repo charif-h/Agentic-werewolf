@@ -28,9 +28,9 @@ def test_vote_prompt_contains_role_and_voting_strategy_and_excludes_self():
     agent = make_agent("Bob")
     agent.vote("talk", ["Ann", "Bob", "Cy"])
     prompt = agent.llm.last_messages[-1].content
-    assert "You are a werewolf" in prompt
+    assert "Secret: you are a werewolf" in prompt
     assert "As a WEREWOLF, vote to eliminate" in prompt
-    assert "VOTING CANDIDATES: Bob, Cy" in prompt
+    assert "Candidates: Bob, Cy" in prompt
 
 
 def test_vote_never_returns_self():

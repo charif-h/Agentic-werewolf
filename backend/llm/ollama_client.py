@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional, Sequence
 import httpx
 
 from backend.llm.base import LLMError, Message
+from backend.llm.formatting import to_alternating
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,7 @@ class OllamaClient:
             options["num_predict"] = limit
         payload: Dict[str, Any] = {
             "model": self.model,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "messages": [{"role": m.role, "content": m.content} for m in to_alternating(messages)],
             "stream": False,
             "options": options,
             "keep_alive": self.keep_alive,

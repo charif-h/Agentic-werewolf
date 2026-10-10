@@ -31,6 +31,7 @@ from backend.game.targets import match_player_name, parse_witch_answer  # noqa: 
 from backend.llm import Message  # noqa: E402
 from backend.llm.ollama_client import OllamaClient  # noqa: E402
 from backend.models.game_models import PersonalityType, PlayerProfile, Role, Sex  # noqa: E402
+from backend.prompts import leaks_own_role  # noqa: E402
 
 NAMES = ["Ann", "Bob", "Cy", "Dee", "Eli", "Fay", "Gus", "Hal"]
 PERSONALITIES = [PersonalityType.INTJ, PersonalityType.ENFP, PersonalityType.ISFJ,
@@ -138,7 +139,8 @@ def witch_stats(rows: List[Dict[str, Any]]) -> Dict[str, float]:
 
 def discussion_stats(rows: List[Dict[str, Any]]) -> Dict[str, float]:
     texts = [r["text"].strip() for r in rows]
-    spoken = [t for t in texts if t and t.lower().strip(". ") != "no comment"]
+    spoken_rows = [r for r in rows if r["text"].strip() and r["text"].strip().lower().strip(". ") != "no comment"]
+    spoken = [r["text"].strip() for r in spoken_rows]
     words = [len(t.split()) for t in spoken] or [0]
     sentences = [len(re.findall(r"[.!?]+(?:\s|$)", t)) or 1 for t in spoken] or [0]
     bigrams = [tuple(zip(t.lower().split(), t.lower().split()[1:])) for t in spoken]
@@ -146,7 +148,9 @@ def discussion_stats(rows: List[Dict[str, Any]]) -> Dict[str, float]:
     n = max(len(texts), 1)
     return {
         "no_comment": 1 - len(spoken) / n,
-        "role_leak": sum(bool(ROLE_WORDS.search(t)) for t in spoken) / max(len(spoken), 1),
+        "role_leak": sum(leaks_own_role(r["text"], r["role"]) for r in spoken_rows) / max(len(spoken_rows), 1),
+        "role_word": sum(bool(ROLE_WORDS.search(t)) for t in spoken) / max(len(spoken), 1),
+        "names_a_player": sum(any(re.search(rf"\b{n}\b", t) for n in NAMES[1:]) for t in spoken) / max(len(spoken), 1),
         "avg_words": statistics.mean(words),
         "too_long": sum(s > 2 or w > 40 for s, w in zip(sentences, words)) / max(len(spoken), 1),
         "distinct_bigrams": len(set(flat)) / max(len(flat), 1),
@@ -225,7 +229,9 @@ def to_markdown(reports: List[Dict[str, Any]]) -> str:
         ("Night target: valid after parsing", lambda r: pct(r["night"]["parsed"])),
         ("Witch decision understood", lambda r: pct(r["witch"]["understood"])),
         ("Discussion: says 'no comment'", lambda r: pct(r["discussion"]["no_comment"])),
-        ("Discussion: leaks a role word", lambda r: pct(r["discussion"]["role_leak"])),
+        ("Discussion: states its own role", lambda r: pct(r["discussion"]["role_leak"])),
+        ("Discussion: uses a role word at all", lambda r: pct(r["discussion"]["role_word"])),
+        ("Discussion: names another player", lambda r: pct(r["discussion"]["names_a_player"])),
         ("Discussion: too long (>2 sentences or >40 words)", lambda r: pct(r["discussion"]["too_long"])),
         ("Discussion: average words", lambda r: f"{r['discussion']['avg_words']:.0f}"),
         ("Discussion: distinct bigrams", lambda r: pct(r["discussion"]["distinct_bigrams"])),

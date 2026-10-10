@@ -64,8 +64,9 @@ def test_ollama_sends_a_chat_request_and_returns_the_text():
     assert seen["url"] == "http://ollama.test:11434/api/chat"
     body = seen["body"]
     assert body["model"] == "gemma3:4b" and body["stream"] is False and body["keep_alive"] == "10m"
+    # Gemma has no system role: it becomes a prefix of the first user turn
     assert body["messages"] == [
-        {"role": "system", "content": "be brief"}, {"role": "user", "content": "hi"},
+        {"role": "user", "content": "be brief\n\nhi"},
         {"role": "assistant", "content": "ok"}, {"role": "user", "content": "more"},
     ]
     assert body["options"] == {"temperature": 0.5, "num_ctx": 2048, "num_predict": 64}

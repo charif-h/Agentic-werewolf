@@ -222,7 +222,7 @@ def test_knowledge_appears_in_prompts_only_when_present():
     assert "WHAT YOU KNOW" in block and "- a fact" in block
     plain = prompts.discussion_prompt("Ann", "", ["Ann"], "seer", "S", "F")
     rich = prompts.discussion_prompt("Ann", "", ["Ann"], "seer", "S", "F", ["Cy is a werewolf."])
-    assert "WHAT YOU KNOW" not in plain and "- Cy is a werewolf.\n\nRESPONSE FACTORS" in rich
+    assert "WHAT YOU KNOW" not in plain and "- Cy is a werewolf.\n\nReasons to speak" in rich
     assert "- Cy is a werewolf." in prompts.vote_prompt("Ann", "seer", "V", "talk", ["Cy"], ["Cy is a werewolf."])
     assert "- Cy is a werewolf." in prompts.player_system_prompt(
         "Ann", 30, "female", "INTJ", "d", "role", ["Cy is a werewolf."])
