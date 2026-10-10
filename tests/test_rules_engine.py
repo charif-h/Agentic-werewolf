@@ -346,3 +346,80 @@ def test_engine_module_does_no_io():
     source = inspect.getsource(rules)
     for forbidden in ("print(", "time.sleep", "import time", "langchain", "requests", "open("):
         assert forbidden not in source
+
+
+# --- exact role tables and invariants (issue #26) -------------------------------------------
+
+EXPECTED_ROLES = {
+    6: {Role.WEREWOLF: 2, Role.VILLAGER: 4},
+    7: {Role.WEREWOLF: 2, Role.VILLAGER: 5},
+    8: {Role.WEREWOLF: 2, Role.SEER: 1, Role.VILLAGER: 5},
+    9: {Role.WEREWOLF: 2, Role.SEER: 1, Role.VILLAGER: 6},
+    10: {Role.WEREWOLF: 2, Role.SEER: 1, Role.WITCH: 1, Role.VILLAGER: 6},
+    11: {Role.WEREWOLF: 2, Role.SEER: 1, Role.WITCH: 1, Role.VILLAGER: 7},
+    12: {Role.WEREWOLF: 2, Role.SEER: 1, Role.WITCH: 1, Role.HUNTER: 1, Role.VILLAGER: 7},
+}
+
+
+@pytest.mark.parametrize("n", sorted(EXPECTED_ROLES))
+def test_role_distribution_for_6_to_12_players(n):
+    assert Counter(rules.distribute_roles(n)) == Counter(EXPECTED_ROLES[n])
+
+
+def test_special_roles_are_unique():
+    for n in range(4, 40):
+        counts = Counter(rules.distribute_roles(n))
+        for role in (Role.SEER, Role.WITCH, Role.HUNTER, Role.GUARD):
+            assert counts[role] <= 1
+
+
+def test_the_two_teams_cannot_win_at_once():
+    """Whatever the number of living werewolves and villagers, at most one team wins"""
+    for wolves in range(0, 7):
+        for others in range(0, 7):
+            if wolves + others == 0:
+                continue
+            state = make_state([Role.WEREWOLF] * wolves + [Role.VILLAGER] * others)
+            winner = rules.check_win_condition(state)
+            assert winner in (None, rules.WEREWOLVES, rules.VILLAGERS)
+            assert (winner == rules.VILLAGERS) == (wolves == 0)
+            assert (winner == rules.WEREWOLVES) == (wolves > 0 and wolves >= others)
+
+
+def test_ties_are_broken_uniformly():
+    wins = Counter()
+    for seed in range(600):
+        state = make_state([Role.WEREWOLF, Role.VILLAGER, Role.VILLAGER])
+        eliminated, _ = rules.resolve_vote(state, {"P0": "P1", "P1": "P2", "P2": "P0"}, random.Random(seed))
+        wins[eliminated.name] += 1
+    assert set(wins) == {"P0", "P1", "P2"}
+    assert min(wins.values()) > 140            # about 200 each
+
+
+def test_invariants_hold_in_every_step_of_random_games():
+    for seed in range(40):
+        rng = random.Random(seed)
+        state = make_state([None] * 12)
+        rules.assign_roles(state.players, rng)
+        alive_before = len(rules.alive_players(state))
+        for _ in range(30):
+            if rules.check_win_condition(state):
+                break
+            rules.start_night(state)
+            wolf = next((p for p in rules.alive_players(state) if p.role == Role.WEREWOLF), None)
+            names = rules.valid_night_targets(state, wolf)
+            assert all(by_name(state, n).role != Role.WEREWOLF for n in names)   # wolves never target wolves
+            victim = by_name(state, rng.choice(names)) if names else None
+            results = rules.resolve_night(state, {Role.WEREWOLF: victim})
+            candidates = [p.name for p in rules.alive_players(state)]
+            if not candidates or rules.check_win_condition(state):
+                continue
+            votes = {n: rules.fallback_vote_target(n, candidates, rng) for n in candidates}
+            rules.resolve_vote(state, {v: t for v, t in votes.items() if t}, rng)
+            shoot_hunters(state, [by_name(state, pid) for pid in results['deaths']], rng)
+            alive_now = len(rules.alive_players(state))
+            assert alive_now <= alive_before                          # nobody comes back to life
+            alive_before = alive_now
+            dead_ids = {p.id for p in state.players if p.status == PlayerStatus.DEAD}
+            assert set(state.eliminated_players) == dead_ids          # bookkeeping matches reality
+            assert len(state.eliminated_players) == len(set(state.eliminated_players))
