@@ -65,7 +65,7 @@ All settings live in `backend/config.py` and can be set in `.env` or as environm
 | Variable | Default | Meaning |
 |---|---|---|
 | `OLLAMA_HOST` | `http://localhost:11434` | where Ollama runs |
-| `LLM_MODEL` | `gemma3:4b` | model tag (`gemma3:1b` is a smaller fallback) |
+| `LLM_MODEL` | `gemma3:4b` | model tag (`gemma3:1b` is a smaller fallback; see [docs/model-benchmark.md](docs/model-benchmark.md)) |
 | `LLM_TEMPERATURE`, `LLM_MAX_TOKENS` | 0.8, 256 | sampling temperature, longest answer |
 | `LLM_NUM_CTX`, `LLM_KEEP_ALIVE`, `LLM_TIMEOUT` | 4096, `30m`, 120 | context window, how long the model stays loaded, seconds per answer |
 | `DEFAULT_PLAYERS`, `MIN_PLAYERS`, `MAX_PLAYERS` | 8, 4, 12 | player count (requests are clamped to the min/max) |
@@ -116,7 +116,7 @@ tests/                    pytest tests (no LLM needed)
 docs/                     architecture.md, security.md
 ```
 
-See [docs/architecture.md](docs/architecture.md) and [docs/security.md](docs/security.md).
+See [docs/architecture.md](docs/architecture.md), [docs/model-benchmark.md](docs/model-benchmark.md) and [docs/security.md](docs/security.md).
 
 ## Tests
 
