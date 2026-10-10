@@ -1,4 +1,31 @@
 services:
+  # The local language model server. Models are stored in the named volume.
+  # For NVIDIA GPU acceleration add the override file:
+  #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # One-shot job: downloads the model into the volume (skipped when already there)
+  model-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["/bin/sh", "-c", "ollama pull ${LLM_MODEL:-gemma3:4b}"]
+    restart: "no"
+
   backend:
     build:
       context: .
@@ -6,9 +33,13 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # Ollama running on the host machine (an ollama service is added in a later change)
-      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - OLLAMA_HOST=http://ollama:11434
       - LLM_MODEL=${LLM_MODEL:-gemma3:4b}
+    depends_on:
+      ollama:
+        condition: service_healthy
+      model-pull:
+        condition: service_completed_successfully
     volumes:
       - ./backend:/app/backend
     restart: unless-stopped
@@ -24,3 +55,6 @@ services:
     environment:
       - REACT_APP_API_URL=http://localhost:8000
     restart: unless-stopped
+
+volumes:
+  ollama-models:

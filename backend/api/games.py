@@ -12,6 +12,8 @@ from backend.api.deps import acquire, get_session
 from backend.api.serializers import public_phase_result, serialize_player
 from backend.config import get_settings
 from backend.game.game_logic import WerewolfGame
+from backend.llm.factory import create_llm_client
+from backend.llm.health import check_model
 from backend.services.phases import advance_phase
 from backend.services.sessions import GameSession
 
@@ -40,7 +42,12 @@ async def create_game(request: GameRequest):
     settings = get_settings()
     num_players = max(settings.min_players, min(request.num_players, settings.max_players))
 
-    game = WerewolfGame(num_players=num_players)
+    llm = create_llm_client()
+    ready, message = await asyncio.to_thread(check_model, llm)
+    if not ready:
+        raise HTTPException(status_code=503, detail=message)
+
+    game = WerewolfGame(num_players=num_players, llm=llm)
     game_state = await asyncio.to_thread(game.setup_game)
     session = state.sessions.create(game)
 
