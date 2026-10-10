@@ -13,6 +13,7 @@ from backend.models.game_models import PlayerProfile
 from backend.llm import ASSISTANT, SYSTEM, USER, LLMClient, Message, fit_text
 from backend.llm import schemas
 from backend.config import get_settings
+from backend.llm.metrics import current_metrics
 from backend import prompts
 from backend.roles import get_handler
 
@@ -135,6 +136,8 @@ class PlayerAgent:
         target = schemas.parse_target(raw, names) if names else None
         if target:
             self._remember(action, target)
+        elif names:
+            self._note_invalid_answer()
         return target
 
     def night_action(self, game_state: Dict[str, Any]) -> Optional[str]:
@@ -170,6 +173,7 @@ class PlayerAgent:
         raw = self._ask_in_game(game_state, action, schemas.witch_schema(poison_targets))
         decision = schemas.parse_witch(raw, poison_targets)
         if decision is None:
+            self._note_invalid_answer()
             return "PASS"
         save, poison = decision
         parts = []
@@ -208,8 +212,10 @@ class PlayerAgent:
         reply = self._speak(context)
         if reply and prompts.leaks_own_role(reply, self.profile.role.value):
             # Ask once more, with a reminder; give up (stay silent) if it happens again
+            self._note_role_leak()
             reply = self._speak(context + prompts.LEAK_REMINDER)
             if reply and prompts.leaks_own_role(reply, self.profile.role.value):
+                self._note_role_leak()
                 reply = ""
         return reply or prompts.NO_COMMENT
 
@@ -221,7 +227,10 @@ class PlayerAgent:
         parsed = schemas.parse_discussion(
             self._ask(system_prompt, context, schemas.discussion_schema(), SPEECH_TOKENS)
         )
-        if parsed is None or not parsed[0]:
+        if parsed is None:
+            self._note_invalid_answer()
+            return ""
+        if not parsed[0]:
             return ""
         return self._clean_reply(parsed[1])
 
@@ -273,4 +282,20 @@ class PlayerAgent:
         )
         raw = self._ask(system_prompt, context, schemas.target_schema(other_players), DECISION_TOKENS)
         # No valid answer (model down, nonsense): a random candidate keeps votes independent
-        return schemas.parse_target(raw, other_players) or random.choice(other_players)
+        target = schemas.parse_target(raw, other_players)
+        if target is None:
+            self._note_invalid_answer()
+        return target or random.choice(other_players)
+
+    @staticmethod
+    def _note_invalid_answer() -> None:
+        """Count an unusable answer in the metrics of the running game, if it is tracked"""
+        metrics = current_metrics()
+        if metrics is not None:
+            metrics.add_invalid_answer()
+
+    @staticmethod
+    def _note_role_leak() -> None:
+        metrics = current_metrics()
+        if metrics is not None:
+            metrics.add_role_leak()
