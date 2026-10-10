@@ -69,6 +69,7 @@ def test_ollama_sends_a_chat_request_and_returns_the_text():
         {"role": "assistant", "content": "ok"}, {"role": "user", "content": "more"},
     ]
     assert body["options"] == {"temperature": 0.5, "num_ctx": 2048, "num_predict": 64}
+    assert body["think"] is False
     assert "format" not in body
 
 
@@ -165,3 +166,26 @@ def test_agent_memory_holds_messages_and_is_replayed():
     agent.night_action(state)
     roles = [m.role for m in llm.last_messages]
     assert roles == [SYSTEM, USER, ASSISTANT, USER]
+
+
+def test_ollama_metrics_count_calls_tokens_and_errors():
+    answer = {"message": {"role": "assistant", "content": "hi"}, "prompt_eval_count": 30,
+              "eval_count": 10, "eval_duration": 500_000_000, "load_duration": 2_000_000_000}
+    client = make_ollama(lambda r: httpx.Response(200, json=answer))
+    client.generate(HELLO)
+    client.generate(HELLO)
+    metrics = client.metrics()
+    assert (metrics["calls"], metrics["errors"]) == (2, 0)
+    assert (metrics["prompt_tokens"], metrics["completion_tokens"]) == (60, 20)
+    assert metrics["generation_seconds"] == pytest.approx(1.0)
+    assert metrics["tokens_per_second"] == pytest.approx(20.0)
+    assert metrics["load_seconds"] == pytest.approx(4.0)
+    assert metrics["seconds"] >= 0
+
+    failing = make_ollama(lambda r: httpx.Response(500, text="boom"))
+    with pytest.raises(LLMError):
+        failing.generate(HELLO)
+    assert (failing.metrics()["calls"], failing.metrics()["errors"]) == (1, 1)
+
+    client.reset_metrics()
+    assert client.metrics()["calls"] == 0
