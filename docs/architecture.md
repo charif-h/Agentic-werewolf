@@ -42,7 +42,7 @@ State lives in memory: one `WerewolfGame` per session, kept in a `SessionManager
 
 ## Deployment
 
-`docker-compose.yml` runs two services: `backend` (uvicorn on 8000, built from `Dockerfile.backend`) and `frontend` (nginx on port 3000, built from `Dockerfile.frontend`). API keys are passed as environment variables.
+`docker-compose.yml` runs `ollama` (model server, models in the `ollama-models` volume), `model-pull` (one-shot download of `LLM_MODEL`), `backend` (uvicorn on 8000, waits for the model) and `frontend` (nginx on port 3000). `docker-compose.gpu.yml` adds NVIDIA GPU access. At startup the backend logs whether Ollama is reachable and the model installed (`backend/llm/health.py`); creating a game answers 503 with the reason while it is not.
 
 ## Planned changes
 

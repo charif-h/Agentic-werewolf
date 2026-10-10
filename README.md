@@ -35,10 +35,26 @@ ollama pull gemma3:4b       # the local model
 ### With Docker
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
-### Without Docker
+This starts four things: an `ollama` server (models are kept in the `ollama-models` volume), a one-shot `model-pull` job that downloads `LLM_MODEL` (about 3.4 GB the first time), the backend and the frontend. The backend waits until the model is there.
+
+With an NVIDIA GPU (needs the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/)), add the GPU override; without it the model runs on the CPU, which is slow:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+```
+
+### Without Docker (Windows, macOS, Linux)
+
+Install [Ollama](https://ollama.com) (Windows: `winget install Ollama.Ollama`), then download the model:
+
+```bash
+scripts/pull_model.sh            # Windows PowerShell: .\scripts\pull_model.ps1
+```
+
+`scripts/pull_model.*` read `LLM_MODEL` from `.env` (default `gemma3:4b`) and pull it with the local `ollama` command. Then:
 
 ```bash
 # Backend (from the project root)
@@ -127,13 +143,14 @@ python -m pytest tests
 
 ## Troubleshooting
 
-- **"Cannot reach Ollama" / "Ollama is not running"**: start Ollama (on Windows it runs in the tray after installation) and check `OLLAMA_HOST`. `GET /api/model` shows the status.
+- **"Cannot reach Ollama" / "Ollama is not running"**: start Ollama (on Windows it runs in the tray after installation) and check `OLLAMA_HOST`. `GET /api/model` shows the status. The backend also logs the model status at startup, and creating a game answers 503 with the same message while the model is not ready.
+- **Docker: the backend never starts**: `docker compose logs model-pull` shows the download; it must finish first.
 - **"Model ... is not installed"**: run `ollama pull gemma3:4b` (or the model set in `LLM_MODEL`).
 - **The first answer takes a minute**: the model is being loaded into memory; later answers take well under a second.
 - **Python import errors**: run uvicorn from the project root, as `python -m uvicorn backend.main:app`.
 - **Port in use**: change `--port` for uvicorn, or `PORT=3001 npm start` for the frontend.
 - **Frontend cannot reach the backend**: check that the backend is running and `REACT_APP_API_URL` is correct.
-- **Docker build problems**: `docker-compose down` then `docker-compose up --build`.
+- **Docker build problems**: `docker compose down` then `docker compose up --build`.
 
 ## License
 

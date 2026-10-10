@@ -1,7 +1,9 @@
 """
 FastAPI Backend for Werewolves of Millers Hollow
 """
+import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,11 +11,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.api import games, health, players, websocket
 from backend.api.errors import install_exception_handlers
 from backend.config import get_settings
+from backend.llm.factory import create_llm_client
+from backend.llm.health import check_model
 
 logging.basicConfig(level=get_settings().log_level.upper(),
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-app = FastAPI(title="Werewolves of Millers Hollow API")
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """At startup, say clearly whether the local model is ready (the server starts either way)"""
+    ready, message = await asyncio.to_thread(check_model, create_llm_client())
+    (logger.info if ready else logger.error)(message)
+    yield
+
+
+app = FastAPI(title="Werewolves of Millers Hollow API", lifespan=lifespan)
 
 # CORS middleware for frontend
 app.add_middleware(

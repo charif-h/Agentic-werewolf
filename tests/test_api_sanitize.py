@@ -20,7 +20,7 @@ def fake_llm():
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr(state, "sessions", SessionManager())
-    with patch("backend.game.game_logic.create_llm_client", return_value=fake_llm()):
+    with patch("backend.api.games.create_llm_client", return_value=fake_llm()):
         yield TestClient(main.app, raise_server_exceptions=False)
 
 
