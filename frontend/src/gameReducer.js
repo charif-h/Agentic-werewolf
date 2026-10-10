@@ -10,6 +10,7 @@ export const initialState = {
   busy: false, // a phase is being played by the server
   speaking: null, // name of the last player who spoke (live indicator)
   winner: null,
+  llm: null, // model usage of this game (calls, tokens, time)
   error: null,
 };
 
@@ -34,6 +35,7 @@ export function gameReducer(state, action) {
         day: game.day_number,
         players: players || game.players,
         log: game.game_log || [],
+        llm: game.llm || null,
         winner: game.phase === 'ended' ? state.winner : null,
       };
     }

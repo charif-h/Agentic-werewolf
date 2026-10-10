@@ -150,10 +150,12 @@ class OllamaClient:
         Is the server up and is the model installed?
 
         Returns:
-            {"model", "host", "reachable", "installed", "size_bytes"}
+            {"model", "host", "reachable", "installed", "size_bytes", "loaded", "vram_bytes"}
+            where `loaded` says whether the model is in memory right now (the first
+            answer of an unloaded model takes much longer)
         """
         info = {"model": self.model, "host": self.host, "reachable": False,
-                "installed": False, "size_bytes": None}
+                "installed": False, "size_bytes": None, "loaded": False, "vram_bytes": None}
         try:
             response = self._http.get("/api/tags", timeout=5)
             response.raise_for_status()
@@ -162,6 +164,13 @@ class OllamaClient:
                 if installed.get("name") == self.model or installed.get("model") == self.model:
                     info["installed"] = True
                     info["size_bytes"] = installed.get("size")
+            if info["installed"]:
+                running = self._http.get("/api/ps", timeout=5)
+                running.raise_for_status()
+                for loaded in running.json().get("models", []):
+                    if loaded.get("name") == self.model or loaded.get("model") == self.model:
+                        info["loaded"] = True
+                        info["vram_bytes"] = loaded.get("size_vram")
         except (httpx.HTTPError, ValueError):
             pass
         return info

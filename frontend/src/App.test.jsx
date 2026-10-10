@@ -26,12 +26,12 @@ function json(body, status = 200) {
 }
 
 function installServer() {
-  serverGame = { phase: 'setup', day_number: 0, players: PLAYERS, game_log: ['[GAME MASTER] Welcome'] };
+  serverGame = { phase: 'setup', day_number: 0, players: PLAYERS, game_log: ['[GAME MASTER] Welcome'], llm: { calls: 0, skipped_turns: 0 } };
   calls = [];
   vi.stubGlobal('fetch', vi.fn((url, options = {}) => {
     const method = options.method || 'GET';
     calls.push(`${method} ${url}`);
-    if (url === '/api/model') return json({ model: 'gemma3:4b', reachable: true, installed: true });
+    if (url === '/api/model') return json({ model: 'gemma3:4b', reachable: true, installed: true, loaded: true, vram_bytes: 2.9e9 });
     if (url === '/api/games' && method === 'POST') return json({ game_id: 'g1' });
     if (url === '/api/games/g1' && method === 'GET') return json(serverGame);
     if (url === '/api/games/g1/players') return json({ players: PLAYERS });
@@ -68,7 +68,8 @@ describe('App', () => {
   it('invites the user to create a game and shows the model', async () => {
     render(<App />);
     expect(screen.getByText(/Click "Create New Game" to begin/)).toBeInTheDocument();
-    expect(await screen.findByText(/Local model: gemma3:4b/)).toBeInTheDocument();
+    expect(await screen.findByText(/Local model/)).toBeInTheDocument();
+    expect(screen.getByText('gemma3:4b')).toBeInTheDocument();
   });
 
   it('creates a game, shows players and hides the roles of the living', async () => {
@@ -191,9 +192,27 @@ describe('App', () => {
     expect(calls).toContain('DELETE /api/games/g1');
   });
 
+  it('shows how much the model worked for the game once it did something', async () => {
+    await startedGame();
+    serverGame = { ...serverGame, llm: { calls: 12, errors: 0, invalid_answers: 0, prompt_tokens: 5000,
+      completion_tokens: 500, seconds: 20, skipped_turns: 3 } };
+    send({ type: 'phase_change', data: { phase: 'day' } });
+    expect(await screen.findByLabelText('Model usage in this game')).toHaveTextContent('12 model calls');
+  });
+
+  it('warns clearly when Ollama is not running, and the game button still works to retry', async () => {
+    fetch.mockImplementation((url) => (url === '/api/model'
+      ? json({ model: 'gemma3:4b', host: 'http://localhost:11434', reachable: false, installed: false, loaded: false })
+      : json({ detail: 'Ollama is not running at http://localhost:11434.' }, 503)));
+    render(<App />);
+    expect(await screen.findByText('Ollama is not running.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Create New Game/ }));
+    expect(await screen.findByText(/Failed to create game: Ollama is not running at/)).toBeInTheDocument();
+  });
+
   it('shows an error when the server refuses to create a game', async () => {
     fetch.mockImplementation((url) => (url === '/api/model'
-      ? json({ model: 'm', reachable: true, installed: true })
+      ? json({ model: 'm', reachable: true, installed: true, loaded: false })
       : json({ detail: 'Ollama is not running' }, 503)));
     render(<App />);
     await screen.findByText(/Local model/);
