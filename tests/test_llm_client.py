@@ -122,17 +122,43 @@ def test_ollama_errors_become_llm_errors_with_helpful_text():
 
 def test_ollama_status():
     tags = {"models": [{"name": "gemma3:1b", "size": 5}, {"name": "gemma3:4b", "model": "gemma3:4b", "size": 3_300_000_000}]}
-    status = make_ollama(lambda r: httpx.Response(200, json=tags)).status()
+    running = {"models": [{"name": "gemma3:4b", "size_vram": 2_900_000_000}]}
+
+    def server(request):
+        return httpx.Response(200, json=running if request.url.path == "/api/ps" else tags)
+
+    status = make_ollama(server).status()
     assert status == {"model": "gemma3:4b", "host": "http://ollama.test:11434", "reachable": True,
-                      "installed": True, "size_bytes": 3_300_000_000}
+                      "installed": True, "size_bytes": 3_300_000_000, "loaded": True,
+                      "vram_bytes": 2_900_000_000}
     missing = make_ollama(lambda r: httpx.Response(200, json={"models": []})).status()
-    assert missing["reachable"] and not missing["installed"]
+    assert missing["reachable"] and not missing["installed"] and not missing["loaded"]
 
     def down(request):
         raise httpx.ConnectError("refused")
 
     unreachable = make_ollama(down).status()
-    assert not unreachable["reachable"] and not unreachable["installed"]
+    assert not unreachable["reachable"] and not unreachable["installed"] and not unreachable["loaded"]
+
+
+def test_ollama_status_installed_but_not_loaded():
+    tags = {"models": [{"name": "gemma3:4b", "size": 3_300_000_000}]}
+
+    def server(request):
+        return httpx.Response(200, json={"models": []} if request.url.path == "/api/ps" else tags)
+
+    status = make_ollama(server).status()
+    assert status["installed"] and not status["loaded"] and status["vram_bytes"] is None
+
+
+def test_ollama_status_survives_a_failing_ps_call():
+    tags = {"models": [{"name": "gemma3:4b", "size": 1}]}
+
+    def server(request):
+        return httpx.Response(500) if request.url.path == "/api/ps" else httpx.Response(200, json=tags)
+
+    status = make_ollama(server).status()
+    assert status["reachable"] and status["installed"] and not status["loaded"]
 
 
 def test_ollama_client_satisfies_the_protocol():

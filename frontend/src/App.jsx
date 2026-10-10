@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import './App.css';
-import gameApi from './services/api.js';
 import PlayerCard from './components/PlayerCard.jsx';
 import GameLog from './components/GameLog.jsx';
+import LlmStats from './components/LlmStats.jsx';
+import ModelStatus from './components/ModelStatus.jsx';
 import { useGame } from './hooks/useGame.js';
+import { useModelStatus } from './hooks/useModelStatus.js';
 
 const PHASE_LABELS = {
   setup: '⚙️ Setup',
@@ -23,12 +25,7 @@ const CONNECTION_LABELS = {
 
 function App() {
   const { state, createGame, startGame, nextPhase, refresh } = useGame();
-  const [model, setModel] = useState(null);
-
-  // Load the local model status on mount
-  useEffect(() => {
-    gameApi.getModel().then(setModel).catch((err) => console.error('Error loading model status:', err));
-  }, []);
+  const model = useModelStatus();
 
   const alivePlayers = state.players.filter((p) => p.status === 'alive');
   const deadPlayers = state.players.filter((p) => p.status === 'dead');
@@ -39,15 +36,7 @@ function App() {
       <div className="header">
         <h1>🐺 The Werewolves of Millers Hollow 🌙</h1>
         <p>AI Agents Playing the Classic Social Deduction Game</p>
-        {model && (
-          <p style={{ fontSize: '0.9em', color: model.installed ? '#4ecdc4' : '#ff6b6b' }}>
-            {model.installed
-              ? `Local model: ${model.model}`
-              : model.reachable
-                ? `Model ${model.model} is not installed (run: ollama pull ${model.model})`
-                : 'Ollama is not running'}
-          </p>
-        )}
+        <ModelStatus model={model} />
       </div>
 
       {state.error && (
@@ -118,6 +107,8 @@ function App() {
               <h2>{PHASE_LABELS[state.phase] || state.phase}</h2>
               <p>Day {state.day}</p>
             </div>
+
+            <LlmStats llm={state.llm} />
 
             <GameLog logs={state.log} />
           </div>

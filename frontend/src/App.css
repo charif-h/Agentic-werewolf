@@ -232,3 +232,39 @@ button.danger:hover {
   background: rgba(78, 205, 196, 0.15);
   color: #4ecdc4;
 }
+
+/* Local model status */
+.model-line { font-size: 0.9em; margin: 6px 0 0; }
+.model-line.ready { color: #4ecdc4; }
+.model-line.idle { color: #ffd166; }
+.model-line.checking { color: #888; }
+
+.model-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 10px auto 0;
+  max-width: 760px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  text-align: left;
+}
+.model-banner.problem {
+  background: rgba(255, 107, 107, 0.15);
+  border: 1px solid #ff6b6b;
+  color: #ffb3b3;
+}
+.model-banner code { background: rgba(0, 0, 0, 0.35); padding: 2px 6px; border-radius: 4px; }
+.model-banner button { margin-left: auto; }
+
+/* Model usage of the running game */
+.llm-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 0.85em;
+  color: #9aa5b1;
+  margin: 8px 0 12px;
+}
+.llm-stats .warn { color: #ffd166; }

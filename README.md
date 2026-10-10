@@ -109,7 +109,7 @@ Each game has its own id, so several games can run at once. Idle games are remov
 | POST | `/api/games/{id}/next-phase` | run the current phase and move on; waits for the result, or answers 202 at once with `?background=true` (409 if a phase is already running, the game has not started, or it has ended) |
 | GET | `/api/games/{id}/players` | player profiles |
 | DELETE | `/api/games/{id}` | delete the game |
-| GET | `/api/model` | local model status: Ollama reachable? model installed? |
+| GET | `/api/model` | local model status: Ollama reachable? model installed? loaded in memory (and how much GPU memory)? |
 | WS | `/ws/{id}` | live events of one game: `player_spoke`, `vote_cast`, `phase_change`, `game_ended`, `error` (messages you send are echoed) |
 | GET | `/api/health` | liveness check and number of running games |
 
