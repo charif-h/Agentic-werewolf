@@ -2,169 +2,152 @@
 
 [![CI](https://github.com/charif-h/Agentic-werewolf/actions/workflows/ci.yml/badge.svg)](https://github.com/charif-h/Agentic-werewolf/actions/workflows/ci.yml)
 
-An AI-driven version of *The Werewolves of Millers Hollow*. Every player is an LLM agent with a random profile (name, sex, age, one of the 16 MBTI personalities) and a secret role. A rule-based Game Master (templates, no LLM) narrates. You watch the game in a React UI.
+*The Werewolves of Millers Hollow* played by AI. Every player is an agent driven by a **local Gemma model** (through [Ollama](https://ollama.com)) with a random name, age and one of the 16 MBTI personalities, and a secret role. They talk, accuse each other, vote and kill. A rule-based Game Master narrates, and you watch it all live in a web page.
 
-> **Status:** prototype. Every player runs on a **local Gemma model** through [Ollama](https://ollama.com): no API key, no cloud, nothing leaves your machine.
+No API key, no cloud: nothing leaves your machine.
 
-## How it works
+## What you need
 
-1. `POST /api/game/create` generates players, assigns roles and creates one `PlayerAgent` per player.
-2. The UI advances the game with `POST /api/game/next-phase`: **night** (werewolves, seer, guard act) -> **day** (deaths announced) -> **discussion** (up to 5 rounds, players may speak or stay silent) -> **voting** -> next night, until a team wins.
-3. Villagers win when no werewolf is left. Werewolves win when they equal or outnumber everyone else.
-
-Role distribution depends on player count: werewolves = max(2, n // 6); Seer from 8 players, Witch from 10, Hunter from 12, Guard from 16; the rest are villagers.
-
-**Roles:** Werewolf (kills at night, knows its teammates), Villager, Seer (inspects one player per night and remembers the results), Guard (protects one player per night, never the same one twice in a row), Witch (one healing and one poison potion for the whole game), Hunter (shoots someone when killed). Cupid and Little Girl were removed: they were never implemented.
-
-**Known limitations** (tracked as GitHub issues): only one werewolf decides the night kill.
-
-## Requirements
-
-- Python 3.11+
-- Node.js 18+
-- [Ollama](https://ollama.com) with the `gemma3:4b` model (3.3 GB download, about 4 GB of GPU memory; a GPU is strongly recommended)
-- Docker + Docker Compose (optional)
+| | |
+|---|---|
+| **Ollama** | to run the model: https://ollama.com (Windows: `winget install Ollama.Ollama`) |
+| **The model** | `gemma3:4b`, a **3.4 GB** download |
+| **Memory** | about **3 GB of GPU memory** (measured: 2.9 GB). A GPU with 6 GB or more is comfortable; an 8 GB laptop GPU (RTX 3070 Ti) plays a whole game in 1.5 to 2 minutes. Without a GPU Ollama falls back to the CPU: it works but is much slower (not measured here); use `gemma3:1b` (0.8 GB) in that case |
+| **Python** 3.11+ and **Node.js** 18+ | unless you use Docker |
 
 ## Quick start
 
-```bash
-git clone https://github.com/charif-h/Agentic-werewolf.git
-cd Agentic-werewolf
-cp .env.example .env        # optional: every setting has a default
-ollama pull gemma3:4b       # the local model
-```
-
-### With Docker
+Install Ollama first (see above), then three steps. They are the same on Windows, macOS and Linux:
 
 ```bash
-docker compose up --build
-```
+git clone https://github.com/charif-h/Agentic-werewolf.git && cd Agentic-werewolf
 
-This starts four things: an `ollama` server (models are kept in the `ollama-models` volume), a one-shot `model-pull` job that downloads `LLM_MODEL` (about 3.4 GB the first time), the backend and the frontend. The backend waits until the model is there.
+# 1. the model (once, 3.4 GB)
+ollama pull gemma3:4b
 
-With an NVIDIA GPU (needs the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/)), add the GPU override; without it the model runs on the CPU, which is slow:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
-```
-
-### Without Docker (Windows, macOS, Linux)
-
-Install [Ollama](https://ollama.com) (Windows: `winget install Ollama.Ollama`), then download the model:
-
-```bash
-scripts/pull_model.sh            # Windows PowerShell: .\scripts\pull_model.ps1
-```
-
-`scripts/pull_model.*` read `LLM_MODEL` from `.env` (default `gemma3:4b`) and pull it with the local `ollama` command. Then:
-
-```bash
-# Backend (from the project root)
-python -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
+# 2. the backend, in a first terminal
+python -m venv venv && source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r backend/requirements.txt
-python -m uvicorn backend.main:app --reload --port 8000
+python -m uvicorn backend.main:app --port 8000
 
-# Frontend (second terminal)
-cd frontend
-npm install
-npm run dev
+# 3. the web page, in a second terminal
+cd frontend && npm install && npm run dev
 ```
 
-Then open:
+Open **http://localhost:3000**, click *Create New Game*, *Start Game*, then *Next Phase* and watch.
 
-- Frontend: http://localhost:3000
-- API: http://localhost:8000, interactive docs at http://localhost:8000/docs
+Prefer containers? One command starts everything, Ollama and the model download included:
 
-### Configuration (`.env`)
+```bash
+docker compose up --build                                                    # CPU
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build    # NVIDIA GPU (needs the NVIDIA Container Toolkit)
+```
 
-All settings live in `backend/config.py` and can be set in `.env` or as environment variables (see `.env.example` for the full list).
+If something does not work, the page tells you what is wrong (Ollama not running, model not installed); the [Troubleshooting](#troubleshooting) section has the details.
+
+## How a game works
+
+1. **Setup**: random profiles, roles shuffled, one agent per player. Werewolves know each other.
+2. **Night**: the werewolves choose a victim, the guard protects someone, the seer inspects someone; then the witch learns who was attacked and may heal and/or poison. A dead hunter shoots someone.
+3. **Day**: the deaths are announced, then the **discussion**: players speak in turn (up to 5 rounds), accuse, defend, and answer when they are named.
+4. **Vote**: everybody votes independently; the most voted player is eliminated and their role revealed.
+5. Repeat until all werewolves are dead (**villagers win**) or the werewolves are at least as many as everybody else (**werewolves win**).
+
+| Role | Power |
+|---|---|
+| Werewolf | kills one villager each night; the first living werewolf decides for the pack |
+| Villager | none, only logic |
+| Seer (from 8 players) | inspects one player per night and remembers the results |
+| Witch (from 10) | one healing and one poison potion for the whole game |
+| Hunter (from 12) | shoots a player when killed (by night, poison or vote) |
+| Guard (from 16) | protects one player per night, never the same one twice in a row |
+
+Werewolves are `max(2, players / 6)`; the rest are villagers. The page hides the roles of living players; the *Spectator mode* switch shows them if the server runs with `REVEAL_ROLES=true`.
+
+## Configuration
+
+Everything has a default. Set what you need in a `.env` file at the project root or as environment variables (the full list is in `.env.example`, the code in `backend/config.py`).
 
 | Variable | Default | Meaning |
 |---|---|---|
+| `LLM_MODEL` | `gemma3:4b` | model tag; `gemma3:1b` is the small fallback ([model comparison](docs/model-benchmark.md)) |
 | `OLLAMA_HOST` | `http://localhost:11434` | where Ollama runs |
-| `LLM_MODEL` | `gemma3:4b` | model tag (`gemma3:1b` is a smaller fallback; see [docs/model-benchmark.md](docs/model-benchmark.md)) |
 | `LLM_TEMPERATURE`, `LLM_MAX_TOKENS` | 0.8, 256 | sampling temperature, longest answer |
 | `LLM_NUM_CTX`, `LLM_KEEP_ALIVE`, `LLM_TIMEOUT` | 4096, `30m`, 120 | context window, how long the model stays loaded, seconds per answer |
-| `DEFAULT_PLAYERS`, `MIN_PLAYERS`, `MAX_PLAYERS` | 8, 4, 12 | player count (requests are clamped to the min/max) |
-| `DISCUSSION_MAX_ROUNDS` | 5 | maximum discussion rounds |
-| `DISCUSSION_GATE` | `true` | players with nothing pressing to say skip their turn (fewer model calls) |
-| `LLM_MAX_PARALLEL` | 1 | model calls in flight at once; raise it together with Ollama's `OLLAMA_NUM_PARALLEL` if your GPU can serve several |
+| `LLM_MAX_PARALLEL` | 1 | model calls in flight at once; raise with Ollama's `OLLAMA_NUM_PARALLEL` if your GPU can serve several |
 | `LLM_WARMUP` | `true` | load the model when the server starts, so the first game does not wait |
-| `REVEAL_ROLES` | `false` | show every role in the API (debug); by default only dead players' roles are visible |
-| `CORS_ORIGINS` | `["http://localhost:3000"]` | allowed frontend origins (JSON list) |
-| `VITE_API_URL` | empty | frontend only: backend address when it is not on the same origin. By default the page calls `/api` and `/ws` and the dev server (or nginx) forwards them to the backend |
-
-The `.env` file must be in the project root.
+| `DEFAULT_PLAYERS`, `MIN_PLAYERS`, `MAX_PLAYERS` | 8, 4, 12 | player count (requests are clamped to the min and max) |
+| `DISCUSSION_MAX_ROUNDS` | 5 | most discussion rounds per day |
+| `DISCUSSION_GATE` | `true` | players with nothing pressing to say skip their turn and repeated lines are not published (fewer model calls) |
+| `REVEAL_ROLES` | `false` | the API sends everybody's role (debug and spectator mode) |
+| `MAX_SESSIONS`, `SESSION_TTL_MINUTES` | 20, 120 | how many games at once, and when an idle game is removed |
+| `CORS_ORIGINS` | `["http://localhost:3000"]` | allowed web origins (JSON list) |
+| `VITE_API_URL` | empty | frontend only: the backend address if it is not on the same origin |
 
 ## API
 
-Each game has its own id, so several games can run at once. Idle games are removed after `SESSION_TTL_MINUTES` and at most `MAX_SESSIONS` exist (the least recently used one is dropped).
+Several games can run at once; each has its own id.
 
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/api/games` | create a game, body `{"num_players": 8}`; returns `game_id` |
-| GET | `/api/games/{id}` | phase, day, players, the latest log lines (`?log_limit=`, default 200), model usage, `roles_revealed` |
+| GET | `/api/games/{id}` | phase, day, players, latest log lines (`?log_limit=`, default 200), model usage, `roles_revealed` |
 | POST | `/api/games/{id}/start` | start the first night |
-| POST | `/api/games/{id}/next-phase` | run the current phase and move on; waits for the result, or answers 202 at once with `?background=true` (409 if a phase is already running, the game has not started, or it has ended) |
+| POST | `/api/games/{id}/next-phase` | play the current phase; waits for the result, or answers 202 at once with `?background=true` (409 if a phase is running, the game has not started or has ended) |
 | GET | `/api/games/{id}/players` | player profiles |
 | DELETE | `/api/games/{id}` | delete the game |
-| GET | `/api/model` | local model status: Ollama reachable? model installed? loaded in memory (and how much GPU memory)? |
-| WS | `/ws/{id}` | live events of one game: `player_spoke`, `vote_cast`, `phase_change`, `game_ended`, `error` (messages you send are echoed) |
-| GET | `/api/health` | liveness check and number of running games |
+| GET | `/api/model` | is Ollama reachable, the model installed, loaded in memory (and how much GPU memory)? |
+| GET | `/api/health` | liveness and number of running games |
+| WS | `/ws/{id}` | live events: `player_spoke`, `vote_cast`, `phase_change`, `game_ended`, `error` |
 
-```bash
-curl -X POST http://localhost:8000/api/games   -H "Content-Type: application/json" -d '{"num_players": 8}'
-```
+Interactive documentation: http://localhost:8000/docs.
 
 ## Project layout
 
 ```
 backend/
-  main.py                 FastAPI app: middleware and routers
-  llm/                    LLMClient interface, Ollama client, fake client for tests
-  prompts/                prompt templates sent to the LLM (player.py)
-  roles/                  one module per role (team, prompts, night action); add a role = add a file
-  engine/rules.py         pure game rules (roles, night, voting, win condition): no LLM, no I/O
-  game/game_logic.py      WerewolfGame: asks the agents for decisions and applies them via the engine
-  api/                    FastAPI routers (games, players, health, websocket), serializers, error handler
-  services/               sessions (several games) and the phase state machine
-  game/game_master.py     template-based Game Master (no LLM)
-  agents/                 player_agent, profile_generator
-  models/game_models.py   Pydantic models and enums
-frontend/src/             React app (App.js, components/, services/api.js)
-tests/                    pytest tests (no LLM needed)
-docs/                     architecture.md, security.md
+  main.py             app: middleware, error handler, routers
+  api/                routers (games, players, health, websocket), what clients may see, shared state
+  services/           sessions (several games) and the phase state machine
+  game/               WerewolfGame (orchestrator), Game Master (templates), who talks, name parsing
+  engine/rules.py     the rules: pure functions, no LLM, no I/O
+  roles/              one module per role: add a role = add a file
+  agents/             PlayerAgent and profile generator
+  prompts/            every prompt sent to the model
+  llm/                the model interface, Ollama client, JSON schemas, fake client for tests
+  models/             data models
+frontend/             React + Vite page (live events, model status, spectator mode)
+scripts/              pull_model, benchmark_models, simulate
+tests/                about 360 tests, no GPU needed
+docs/                 architecture, model benchmark, frontend, CI, security
 ```
 
-See [docs/architecture.md](docs/architecture.md), [docs/model-benchmark.md](docs/model-benchmark.md) and [docs/security.md](docs/security.md).
+Read [docs/architecture.md](docs/architecture.md) to see how the pieces fit, [docs/model-benchmark.md](docs/model-benchmark.md) for the model choice, [docs/frontend.md](docs/frontend.md), [docs/ci.md](docs/ci.md) and [docs/security.md](docs/security.md).
 
-## Tests
+## Development
 
 ```bash
 pip install -r backend/requirements-dev.txt
-python -m pytest                       # about 300 tests, 5 seconds, no GPU, no Ollama
+python -m pytest                       # about 360 tests in 5 seconds: a scripted fake model, no GPU, no Ollama
 python -m pytest --cov=backend         # with coverage (about 98%)
 python -m pytest --run-realmodel       # also the tests marked `realmodel` (need Ollama and the model)
 ruff check .                           # lint
+cd frontend && npm test && npm run lint && npm run build
 ```
 
-Prompt changes show up in review: `tests/snapshots/` holds the exact text of every prompt the model receives. After changing a prompt on purpose, run `UPDATE_SNAPSHOTS=1 python -m pytest tests/test_prompt_snapshots.py` and review the diff.
-
-GitHub Actions runs the lint, the tests and the frontend build on every push and pull request; see [docs/ci.md](docs/ci.md), which also explains the optional real-model smoke test.
-
-The tests never talk to a real model: `tests/conftest.py` replaces the LLM client with a scripted `FakeLLMClient`. Settings for pytest and ruff are in `pyproject.toml`.
+* **Changing a prompt**: `tests/snapshots/` holds the exact chat the model receives for every role and question. After a deliberate change run `UPDATE_SNAPSHOTS=1 python -m pytest tests/test_prompt_snapshots.py` and review the diff.
+* **Comparing models or prompts on real games**: `python scripts/simulate.py --games 20 --players 8` plays complete games against your local model and reports win rates, invalid-output rate, latency and role leaks. `python scripts/benchmark_models.py gemma3:1b gemma3:4b` compares models on fixed scenarios.
+* GitHub Actions runs lint, tests and the frontend build on every push; see [docs/ci.md](docs/ci.md).
 
 ## Troubleshooting
 
-- **"Cannot reach Ollama" / "Ollama is not running"**: start Ollama (on Windows it runs in the tray after installation) and check `OLLAMA_HOST`. `GET /api/model` shows the status. The backend also logs the model status at startup, and creating a game answers 503 with the same message while the model is not ready.
-- **Docker: the backend never starts**: `docker compose logs model-pull` shows the download; it must finish first.
-- **"Model ... is not installed"**: run `ollama pull gemma3:4b` (or the model set in `LLM_MODEL`).
-- **The first answer takes a minute**: the model is being loaded into memory; later answers take well under a second.
-- **Python import errors**: run uvicorn from the project root, as `python -m uvicorn backend.main:app`.
-- **Port in use**: change `--port` for uvicorn, or `npm run dev -- --port 3001` for the frontend (the dev server forwards `/api` and `/ws` to `http://127.0.0.1:8000`, change it with `VITE_BACKEND_URL`).
-- **Frontend cannot reach the backend**: check that the backend is running on port 8000 (`VITE_BACKEND_URL` if not).
-- **Docker build problems**: `docker compose down` then `docker compose up --build`.
+- **The page says *Ollama is not running***: start Ollama (on Windows it lives in the tray after installation) and press *Retry*. `GET /api/model` shows the same status, and the backend logs it at startup. Creating a game answers 503 with the reason until the model is ready.
+- **The page says *the model is not installed***: run `ollama pull gemma3:4b` (or the tag you set in `LLM_MODEL`).
+- **The first answer takes up to a minute**: the model is being loaded into memory. After that answers take about a second. The server warms the model up at startup (`LLM_WARMUP`).
+- **Games are slow**: check that Ollama uses your GPU (`ollama ps` shows `100% GPU`). Without one use `LLM_MODEL=gemma3:1b`.
+- **`ModuleNotFoundError: backend`**: start uvicorn from the project root as `python -m uvicorn backend.main:app`.
+- **Port in use**: change `--port` for uvicorn, or run `npm run dev -- --port 3001` for the page (its dev server forwards `/api` and `/ws` to `http://127.0.0.1:8000`, change that with `VITE_BACKEND_URL`).
+- **Docker: the backend never starts**: it waits for the model; `docker compose logs model-pull` shows the download.
 
 ## License
 

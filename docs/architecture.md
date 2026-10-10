@@ -1,57 +1,94 @@
 # Architecture
 
-```
-React UI  --REST-->  FastAPI (backend/main.py)  -->  WerewolfGame (game/game_logic.py)
-   ^                      |                              |-- GameMaster (no LLM)
-   '------WebSocket-------'                              '-- PlayerAgent x N   }-- LLMClient -> Ollama (local Gemma)
+One idea shapes the code: **the rules of the game know nothing about the language model**. The model only answers questions ("who do you vote for?", "what do you say?"); the rules decide what the answers mean. That is why a whole game can be played in a unit test with a scripted model, and why the model can be changed without touching the rules.
+
+## The big picture
 
 ```
+  Browser (React + Vite)                      one process (FastAPI / uvicorn)
+ ┌────────────────────┐   REST + WebSocket  ┌──────────────────────────────────────────────┐
+ │ page, live log,    │ <─────────────────> │  api/        routers, what clients may see   │
+ │ model status       │                     │      │                                       │
+ └────────────────────┘                     │  services/   sessions · phase state machine  │
+                                            │      │                                       │
+                                            │  game/       WerewolfGame (orchestrator)     │
+                                            │      │  ┌─────────────┬──────────────────┐  │
+                                            │      │  │ engine/     │ agents/          │  │
+                                            │      │  │ rules       │ PlayerAgent ×N   │  │
+                                            │      │  │ (no LLM,    │   uses roles/    │  │
+                                            │      │  │  no I/O)    │   and prompts/   │  │
+                                            │      │  └─────────────┴────────┬─────────┘  │
+                                            │      │                         │            │
+                                            │  llm/        LLMClient ─ OllamaClient       │
+                                            └─────────────────────────────────┬────────────┘
+                                                                              │ HTTP /api/chat
+                                                                       ┌──────▼───────┐
+                                                                       │    Ollama    │  gemma3:4b
+                                                                       └──────────────┘
+```
 
-State lives in memory: one `WerewolfGame` per session, kept in a `SessionManager` (`backend/services/sessions.py`) keyed by a random id, with a TTL and a maximum count. A per-session lock prevents two phases from running at once. There is no database.
+Dependencies point downwards only: `engine` and `roles` import nothing from `agents`, `llm` or `api`. State lives in memory (no database): one `WerewolfGame` per session.
 
-## Backend modules
+## Modules
 
-| Module | Role |
+| Module | What it does |
 |---|---|
-| `backend/main.py` | Builds the app: CORS, central error handler (generic 500, details only in the log), routers. |
-| `backend/api/` | Routers: `games` (create, state, start, next-phase), `players`, `health` (root, health, model status), `websocket` (`/ws/{id}`); `serializers` (what clients may see), `state` (sessions and WebSocket connections), `errors`. |
-| `backend/services/phases.py` | Phase state machine: a table from the current phase to the function that plays it (`advance_phase`). Blocking, so the API runs it in a worker thread (`asyncio.to_thread`). While it runs, `WerewolfGame.on_event` pushes `player_spoke` and `vote_cast` events to the game's WebSocket clients. |
-| `backend/prompts/` | Prompt templates for player agents as plain functions (persona, game context, discussion, vote). Role-specific text comes from the role handlers. |
-| `backend/roles/` | One module per role, registered in a registry (`get_handler(role)`). A `RoleHandler` holds the team, the prompts (description, discussion/voting strategy), and the night action (order, valid targets, what it records). Adding a role means adding one file. |
-| `backend/engine/rules.py` | Pure rules, no LLM or I/O: role distribution, valid night targets, night resolution (kill, guard, seer, witch potions), hunter death shot, vote tally, win condition. Randomness is injectable (`random.Random`), so a full game can run in a unit test. |
-| `backend/game/game_logic.py` | `WerewolfGame` orchestrator: asks player agents for decisions (LLM), passes them to the engine, writes the game log. Also runs the discussion rounds. |
-| `backend/agents/player_agent.py` | `PlayerAgent`: one per player. Builds the persona prompt from profile + role and exposes `night_action`, `discuss`, `vote`. Keeps its own short message memory. |
-| `backend/game/game_master.py` | `GameMaster`: template announcements (night, day, elimination, winner) and the rule that decides when discussion ends. No LLM calls. |
-| `backend/agents/profile_generator.py` | Random unique names, sex, age (18-80), MBTI personality. |
-| `backend/llm/schemas.py` | JSON schemas for the decisions players make (a target restricted to the valid names with an `enum`, the discussion `{speak, message}`, the witch's `{save, poison}`) and the parsers for the answers. Ollama's `format` option makes the model produce only matching JSON, so votes and night targets are always valid names. When the model is unreachable or the answer is not valid, the game uses a random valid target (never a potion). |
-| `backend/llm/` | The `LLMClient` interface (`generate(messages, max_tokens, temperature, json_schema) -> str`), `Message`, `OllamaClient` (HTTP client for a local Ollama server: queues calls for `LLM_MAX_PARALLEL` slots, warms the model up, reports whether it is installed, counts calls/tokens/time), and a scripted `FakeLLMClient` for tests. One client is shared by every game and every player. |
-| `backend/models/game_models.py` | Pydantic models and enums: `PlayerProfile`, `GameState`, `Discussion`, `Message`, `Role`, `GamePhase`, `PlayerStatus`, `PersonalityType`, `Sex`. |
+| `main.py` | builds the app: CORS, one error handler (generic 500, details only in the log), the routers, the startup check of the model |
+| `api/` | routers `games`, `players`, `health`, `websocket`; `serializers` decide what a client may see (no roles of living players, no guard or seer information); `state` holds the sessions and the WebSocket connections; `errors` |
+| `services/sessions.py` | `SessionManager`: games by random id, time-to-live, maximum number (the least recently used goes first), one lock per game |
+| `services/phases.py` | the **phase state machine**: a table from the current phase to the function that plays it (`advance_phase`) |
+| `game/game_logic.py` | `WerewolfGame`, the **orchestrator**: asks the agents for decisions, hands them to the engine, writes the log, runs the discussion, emits live events |
+| `game/game_master.py` | the Game Master: template announcements and the rule that ends the discussion. **No LLM** |
+| `game/talkativeness.py` | decides, without any model call, whether a player takes their turn (personality, being named, long silence) and whether a line only repeats what was just said |
+| `game/targets.py` | turns free text into valid player names (whole-word, case-insensitive) |
+| `engine/rules.py` | **the rules**: role distribution, who may be targeted, night resolution (kill, guard, seer, witch), hunter's shot, vote tally, win condition. Pure functions over `GameState`; randomness is injectable |
+| `roles/` | one module per role (team, descriptions, strategies, night action) and a registry. **Adding a role means adding one file** |
+| `agents/player_agent.py` | `PlayerAgent`: one per player. Builds the prompts, asks for **JSON** answers, keeps a short memory and the player's secret knowledge (the seer's findings, the werewolves' teammates), falls back safely when an answer is unusable |
+| `prompts/` | every sentence sent to the model, as plain functions |
+| `llm/` | the model side: `LLMClient` (the interface), `OllamaClient`, `schemas` (JSON schemas and their parsers), `formatting` (Gemma chat format), `tokens` (context budget), `metrics`, `health`, and `FakeLLMClient` for tests |
+| `models/game_models.py` | the data: `GameState`, `PlayerProfile`, `Role`, `GamePhase`, ... |
 
-## Phase flow
+## A game, phase by phase
 
-`POST /api/games/{id}/next-phase` runs one step depending on the game phase (see `services/phases.py`). It runs in a worker thread, so the server keeps answering other requests; add `?background=true` to get an immediate 202 and the result as a `phase_change` WebSocket event:
+`POST /api/games/{id}/next-phase` plays one step of the state machine in a **worker thread**, so the server keeps answering other requests while the model works:
 
-| Current phase | What happens | Next |
+| Phase played | What happens | Next phase |
 |---|---|---|
-| night | werewolf (first one only) picks a target, guard protects, seer checks; then the witch is told the victim and may heal and/or poison; kill applied unless protected or healed; a dead hunter shoots; day announced | day |
-| day | `conduct_discussion(max_rounds=5)`: players in random order may speak or say "no comment"; the Game Master ends it after a silent round (from round 2), at max rounds, or from round 3 when fewer than max(2, players/3) people spoke | discussion |
-| discussion | every player votes independently; most votes is eliminated (ties random); win condition checked | night or ended |
+| night | the first werewolf chooses a victim, the guard a person to protect, the seer someone to inspect; the witch is told the victim and may heal and/or poison; the engine resolves it; a dead hunter shoots; the seer and the witch are told what they learned | day |
+| day | `conduct_discussion`: up to 5 rounds of players speaking in turn (see below) until the Game Master says it is over | discussion |
+| discussion | every player votes independently (a vote is always for another living player); the engine tallies and eliminates (ties are random); a dead hunter shoots; win condition checked | night, or the end |
 
-## Performance on one GPU
+Every step reports `player_spoke`, `vote_cast`, then `phase_change` (and `game_ended` after the last one) to the game's WebSocket. With `?background=true` the request answers 202 at once and the result arrives as the event.
 
-* **One request at a time.** All games share one `OllamaClient`; its calls queue for `LLM_MAX_PARALLEL` slots (default 1), so ten games never fire ten requests at the GPU together. Time spent queued is reported as `wait_seconds`.
-* **Model stays loaded.** `keep_alive` keeps it in memory between calls and the server loads it at startup (`LLM_WARMUP`), so the first game does not wait ~10 to 50 s.
-* **Fewer calls.** In the discussion, `game/talkativeness.py` decides without any model call whether a player takes their turn: extraverts talk more than introverts, someone who spoke last round talks less, and a player who was just named always answers. The first turn of the day is never skipped.
-* **Metrics per game.** `GET /api/games/{id}` returns `llm`: calls, errors, skipped turns, prompt/completion tokens, tokens per second, seconds of model time, seconds waiting. The totals for the whole server are in `OllamaClient.metrics()`; a summary of each game is logged when it ends.
+**The discussion.** Players are asked in random order. Before asking, `talkativeness` decides without a model call: extraverts speak more than introverts, someone who spoke last round less, someone silent for a long time more, and someone who was just named always answers (the very first turn is never skipped). A line that only repeats what was just said is not published. The Game Master ends the discussion after a silent round, at the maximum, or when too few people speak. All of this exists to save model calls and to keep the talk interesting.
 
-## Frontend
+**What a player is asked.** Each question is a prompt plus a JSON schema. A vote or a night target must be one of the valid names (an `enum`, enforced by Ollama), the discussion answer is `{speak, message}`, the witch's is `{save, poison}`. If the model is unreachable or the answer is unusable the game uses a random valid target, stays silent in the discussion, and **never** uses a potion by chance.
 
-`frontend/src/App.js` holds the state and buttons. `components/PlayerCard.js` and `components/GameLog.js` render players and log. `services/api.js` wraps the REST calls with axios. The WebSocket (`/ws`) is not used by the UI yet.
+## Concurrency
+
+* **One model, one GPU.** All games share one `OllamaClient`. Its calls queue for `LLM_MAX_PARALLEL` slots (default 1), so ten games never fire ten requests at the GPU together. Time spent waiting is measured.
+* **One phase per game at a time.** A lock per session; a second `next-phase` gets 409. Sessions that are busy are never expired.
+* **Async API, blocking game.** The routes are `async`; the game code is plain blocking Python and runs in `asyncio.to_thread`. The thread reports events back to the event loop with `run_coroutine_threadsafe`.
+* **Per-game metrics.** A context variable ties every model call to the game that made it: `GET /api/games/{id}` returns calls, tokens, time, skipped turns, unusable answers; a summary is logged when the game ends.
+
+## The frontend
+
+React with Vite (no runtime dependency but React). `useGame` keeps one reducer, calls the REST endpoints and follows the game's WebSocket (with reconnect and a reload after a reconnect); messages and votes appear as events arrive, the end of a phase reloads the real state. `useModelStatus` polls `/api/model` and shows the banner when Ollama is down. In development Vite forwards `/api` and `/ws` to the backend; in Docker nginx does. See [frontend.md](frontend.md).
 
 ## Deployment
 
-`docker-compose.yml` runs `ollama` (model server, models in the `ollama-models` volume), `model-pull` (one-shot download of `LLM_MODEL`), `backend` (uvicorn on 8000, waits for the model) and `frontend` (nginx on port 3000). `docker-compose.gpu.yml` adds NVIDIA GPU access. At startup the backend logs whether Ollama is reachable and the model installed (`backend/llm/health.py`); creating a game answers 503 with the reason while it is not.
+`docker-compose.yml` runs `ollama` (models in a volume), `model-pull` (one-shot download of `LLM_MODEL`), `backend` (waits for the model) and `frontend` (nginx on port 3000, forwards `/api` and `/ws`). `docker-compose.gpu.yml` adds the NVIDIA GPU. At startup the backend logs whether Ollama is reachable and the model installed; creating a game answers 503 with the reason while it is not.
 
-## Planned changes
+## Tests and tools
 
-Tracked in GitHub milestones: separate a pure rules engine from the agents, session-based games, async API, finish roles, replace cloud providers with a local Gemma model, real test suite.
+* About 360 backend tests (5 s, no GPU) with a scripted `FakeLLMClient`; the frontend has its own (Vitest). Full games are played by the engine alone, by the orchestrator with fake agents, and through the HTTP API and WebSocket.
+* `tests/snapshots/` pins the exact prompts.
+* `scripts/simulate.py` plays complete games against the real model and reports win rates, invalid answers, latency and role leaks; `scripts/benchmark_models.py` compares models. They found real problems that the unit tests could not (a model habit of closing JSON strings with curly quotes).
+* CI (GitHub Actions) runs lint, tests and the frontend build; see [ci.md](ci.md).
+
+## Recipes
+
+* **Add a role**: create `roles/<name>.py` with a registered `RoleHandler` subclass (description, strategies, night action if any), add the role to `models.Role` and to `engine.rules.distribute_roles`, add tests. The registry finds the module by itself.
+* **Change a prompt**: edit `prompts/player.py` (or a role's text), run `UPDATE_SNAPSHOTS=1 pytest tests/test_prompt_snapshots.py`, review the diff, then compare with `scripts/simulate.py` before and after.
+* **Change the model**: `LLM_MODEL=<tag>`; compare with `scripts/benchmark_models.py` first ([model-benchmark.md](model-benchmark.md)).
+* **Change a rule**: edit `engine/rules.py`; it has no dependencies, so its tests (`tests/test_rules_engine.py`) run instantly.

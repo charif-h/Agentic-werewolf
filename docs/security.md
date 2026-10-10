@@ -1,6 +1,6 @@
 # Security notes
 
-This is a local prototype and is **not** ready to be exposed on the internet. This file lists the current state, not a certification.
+This is a local game and is **not** ready to be exposed on the internet. This file lists the current state, not a certification. The design is local-only on purpose: the model, the games and the logs live on one machine.
 
 ## Known issues (tracked on GitHub)
 
@@ -20,13 +20,14 @@ This is a local prototype and is **not** ready to be exposed on the internet. Th
 
 ## Data sent to third parties
 
-None. The language model runs locally through Ollama; game content stays on your machine (unless you point `OLLAMA_HOST` at another server).
+None. The language model runs on your machine through Ollama; names, roles and everything the players say stay there (unless you point `OLLAMA_HOST` at another computer). There are no API keys, no accounts and no telemetry. The only downloads are the model itself (`ollama pull`) and the usual `pip` and `npm` packages.
 
 ## Before any public deployment
 
-1. Add authentication and rate limiting; serve over HTTPS.
-3. Run `pip audit` and `npm audit`.
-4. Do not expose the Ollama port (11434) to the network.
+1. Add authentication and rate limiting in front of the API, and serve it over HTTPS.
+2. Keep Ollama's port (11434) reachable only from the backend, never from the network.
+3. Run `pip audit` and `npm audit` (the production frontend has no known vulnerability today; the remaining advisories are in development tools, see [frontend.md](frontend.md)).
+4. Set `CORS_ORIGINS` to your real address.
 
 ## Reporting a vulnerability
 
