@@ -1,15 +1,25 @@
 """
 Player AI Agent - Controls individual player behavior
+
+Every decision (vote, night target, witch potions, hunter shot, what to say)
+is requested as JSON that matches a schema, so the model can only answer with
+valid names and the code never has to guess what a sentence meant.
 """
+import logging
 import random
 import re
 from typing import Optional, Dict, Any, List
 from backend.models.game_models import PlayerProfile
 from backend.llm import ASSISTANT, SYSTEM, USER, LLMClient, Message, fit_text
+from backend.llm import schemas
 from backend.config import get_settings
-from backend.game.targets import pick_target
 from backend import prompts
 from backend.roles import get_handler
+
+logger = logging.getLogger(__name__)
+
+DECISION_TOKENS = 60      # a JSON object holding a name
+SPEECH_TOKENS = 160       # a JSON object holding one or two sentences
 
 
 class PlayerAgent:
@@ -78,34 +88,32 @@ class PlayerAgent:
 
         return messages
 
-    def get_action(self, game_state: Dict[str, Any], context: str) -> str:
+    def _ask(self, system_prompt: str, context: str, schema: Dict[str, Any],
+             max_tokens: int) -> Optional[str]:
         """
-        Get the player's action or response based on current game state
-
-        Args:
-            game_state: Current state of the game
-            context: Specific context or question for the player
+        Send a question and ask for JSON matching `schema`
 
         Returns:
-            The player's response or action
+            The raw answer, or None if the model could not be reached
         """
-        system_prompt = self._build_system_prompt()
+        messages = self._prepare_messages(system_prompt, context)
+        try:
+            return self.llm.generate(messages, json_schema=schema, max_tokens=max_tokens)
+        except Exception as e:
+            logger.warning("%s: model call failed: %s", self.profile.name, e)
+            return None
 
+    def _ask_in_game(self, game_state: Dict[str, Any], action: str, schema: Dict[str, Any]) -> Optional[str]:
+        """Ask a question that needs the game state (night actions, witch, hunter)"""
         alive_names = [p.get('name') for p in game_state.get('players', [])
                        if p.get('status') == 'alive']
         discussion_history = game_state.get('discussion_history', [])
         window = get_settings().discussion_context_messages
-        game_context = prompts.game_context(
+        context = prompts.game_context(
             game_state.get('phase', 'unknown'), game_state.get('day_number', 0), alive_names,
-            game_state.get('recent_events', 'None'), discussion_history[-window:], context,
+            game_state.get('recent_events', 'None'), discussion_history[-window:], action,
         )
-
-        messages = self._prepare_messages(system_prompt, game_context)
-
-        response = self.llm.generate(messages)
-
-        self._remember(context, response)
-        return response
+        return self._ask(self._build_system_prompt(), context, schema, DECISION_TOKENS)
 
     def _remember(self, question: str, answer: str) -> None:
         """
@@ -121,20 +129,29 @@ class PlayerAgent:
         """Keep the most recent part of the conversation that fits the token budget"""
         return fit_text(conversation, get_settings().conversation_token_budget)
 
+    def _choose_target(self, game_state: Dict[str, Any], action: str, names: List[str]) -> Optional[str]:
+        """Ask for one of `names`; None if the model failed or answered nonsense"""
+        raw = self._ask_in_game(game_state, action, schemas.target_schema(names))
+        target = schemas.parse_target(raw, names) if names else None
+        if target:
+            self._remember(action, target)
+        return target
+
     def night_action(self, game_state: Dict[str, Any]) -> Optional[str]:
         """
         Perform night action based on role
 
         Args:
-            game_state: Current game state
+            game_state: Current game state (`valid_targets` lists the names to choose from)
 
         Returns:
-            Target player name or None
+            The chosen player name, or None if the role has no night action or
+            the model gave no valid answer (the game then picks a random target)
         """
         if not self.handler.acts_at_night:
             return None
-        context = self.handler.night_prompt(game_state.get('valid_targets', []))
-        return self.get_action(game_state, context)
+        names = game_state.get('valid_targets', [])
+        return self._choose_target(game_state, self.handler.night_prompt(names), names)
 
     def add_knowledge(self, fact: str) -> None:
         """Remember a secret fact (e.g. the seer's findings); it appears in later prompts"""
@@ -142,14 +159,32 @@ class PlayerAgent:
 
     def witch_action(self, game_state: Dict[str, Any], victim: Optional[str], can_save: bool,
                      can_poison: bool, poison_targets: List[str]) -> str:
-        """Ask the witch what she does tonight (raw answer, parsed by the game)"""
-        context = prompts.witch_prompt(victim, can_save, can_poison, poison_targets)
-        return self.get_action(game_state, context)
+        """
+        Ask the witch what she does tonight
 
-    def hunter_shot(self, game_state: Dict[str, Any], targets: List[str]) -> str:
-        """Ask the dying hunter whom to shoot (raw answer, parsed by the game)"""
-        context = prompts.hunter_prompt(self.handler.death_shot_instruction, targets)
-        return self.get_action(game_state, context)
+        Returns:
+            "SAVE", "POISON <name>", "SAVE and POISON <name>" or "PASS". Potions she
+            no longer has, and unclear answers, give "PASS" (a potion is never used at random).
+        """
+        action = prompts.witch_prompt(victim, can_save, can_poison, poison_targets)
+        raw = self._ask_in_game(game_state, action, schemas.witch_schema(poison_targets))
+        decision = schemas.parse_witch(raw, poison_targets)
+        if decision is None:
+            return "PASS"
+        save, poison = decision
+        parts = []
+        if save and can_save:
+            parts.append("SAVE")
+        if poison and can_poison:
+            parts.append(f"POISON {poison}")
+        answer = " and ".join(parts) or "PASS"
+        self._remember(action, answer)
+        return answer
+
+    def hunter_shot(self, game_state: Dict[str, Any], targets: List[str]) -> Optional[str]:
+        """Ask the dying hunter whom to shoot; None if the model gave no valid answer"""
+        action = prompts.hunter_prompt(self.handler.death_shot_instruction, targets)
+        return self._choose_target(game_state, action, targets)
 
     def discuss(self, conversation_history: str, alive_players: list[str]) -> str:
         """
@@ -160,7 +195,7 @@ class PlayerAgent:
             alive_players: List of alive player names
 
         Returns:
-            Strategic comment or "no comment" if player chooses to stay silent
+            What the player says, or "no comment" if they stay silent
         """
         conversation_history = self._fit_conversation(conversation_history)
         context = prompts.discussion_prompt(
@@ -170,23 +205,30 @@ class PlayerAgent:
             self.knowledge,
         )
 
-        try:
-            response = self._clean_reply(self._get_llm_response(context))
-            if prompts.leaks_own_role(response, self.profile.role.value):
-                # Ask once more, with a reminder; give up (stay silent) if it happens again
-                response = self._clean_reply(self._get_llm_response(context + prompts.LEAK_REMINDER))
-                if prompts.leaks_own_role(response, self.profile.role.value):
-                    return prompts.NO_COMMENT
-            return response or prompts.NO_COMMENT
+        reply = self._speak(context)
+        if reply and prompts.leaks_own_role(reply, self.profile.role.value):
+            # Ask once more, with a reminder; give up (stay silent) if it happens again
+            reply = self._speak(context + prompts.LEAK_REMINDER)
+            if reply and prompts.leaks_own_role(reply, self.profile.role.value):
+                reply = ""
+        return reply or prompts.NO_COMMENT
 
-        except Exception:
-            # Safe fallback if the API fails
-            return prompts.NO_COMMENT
+    def _speak(self, context: str) -> str:
+        """One attempt at a discussion answer; '' when silent, unclear or unreachable"""
+        system_prompt = prompts.short_reply_system_prompt(
+            self.profile.name, self.profile.personality.value
+        )
+        parsed = schemas.parse_discussion(
+            self._ask(system_prompt, context, schemas.discussion_schema(), SPEECH_TOKENS)
+        )
+        if parsed is None or not parsed[0]:
+            return ""
+        return self._clean_reply(parsed[1])
 
     @staticmethod
     def _clean_reply(text: str) -> str:
         """Trim the answer and the quotes models like to put around speech"""
-        reply = text.strip().strip('"\u201c\u201d').strip()
+        reply = text.strip().strip('"“”').strip()
         if reply.lower().strip(". ") == prompts.NO_COMMENT:
             return ""
         # Models like to add "No comment." after a real sentence
@@ -214,7 +256,7 @@ class PlayerAgent:
             alive_players: List of all alive players who can be voted for
 
         Returns:
-            Name of the player to vote for (must be from alive_players list)
+            Name of the player to vote for (always one of the other alive players)
         """
         # Remove self from voting options
         other_players = [p for p in alive_players if p != self.profile.name]
@@ -226,25 +268,9 @@ class PlayerAgent:
             self.profile.name, self.profile.role.value, self.handler.voting_strategy,
             self._fit_conversation(conversation_history), other_players, self.knowledge,
         )
-
-        try:
-            response = self._get_llm_response(context)
-
-            # Extract player name from response
-            response = response.strip()
-
-            # Unclear answer: random valid candidate (avoids bias toward the first player)
-            return pick_target(response, other_players)
-
-        except Exception:
-            # Random vote as fallback to ensure independence
-            return random.choice(other_players)
-
-    def _get_llm_response(self, context: str) -> str:
-        """Get response from LLM with error handling"""
         system_prompt = prompts.short_reply_system_prompt(
             self.profile.name, self.profile.personality.value
         )
-
-        messages = self._prepare_messages(system_prompt, context)
-        return self.llm.generate(messages)
+        raw = self._ask(system_prompt, context, schemas.target_schema(other_players), DECISION_TOKENS)
+        # No valid answer (model down, nonsense): a random candidate keeps votes independent
+        return schemas.parse_target(raw, other_players) or random.choice(other_players)

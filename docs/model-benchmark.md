@@ -86,6 +86,40 @@ What changed for the better: nobody answers "Yes, please." any more (0% said 'no
 
 **Decision unchanged: `gemma3:4b` stays the default**, `gemma3:1b` the low-end fallback. `gemma4:e2b-it-qat` is the one to watch (lowest VRAM, fastest of the 4B-class models) but is less varied here.
 
+## With structured output (issue #23)
+
+Votes, night targets, the witch's potions, the hunter's shot and the discussion are now requested as JSON that must match a schema (a target is restricted to the valid names). Same scenarios and machine; the table measures what the agent returns after parsing.
+
+| Metric | gemma3:1b | gemma3:4b | gemma3:4b-it-qat | gemma4:e2b-it-qat |
+|---|---|---|---|---|
+| Download size (GB) | 0.81 | 3.35 | 4.01 | 4.34 |
+| VRAM used (GB) | 0.88 | 2.88 | 3.54 | 1.65 |
+| Cold start (s) | 2.8 | 0.5 | 10.0 | 11.9 |
+| Tokens per second | 106.2 | 76.0 | 73.6 | 128.8 |
+| Seconds per answer | 0.31 | 0.59 | 1.22 | 0.29 |
+| Average prompt tokens | 245 | 246 | 246 | 245 |
+| Errors | 0 | 0 | 0 | 0 |
+| Raw answers that are valid JSON | 98% | 97% | 99% | 100% |
+| Vote: exact name only | 100% | 100% | 100% | 100% |
+| Vote: valid after parsing | 100% | 100% | 100% | 100% |
+| Night target: exact name only | 100% | 100% | 100% | 100% |
+| Night target: valid after parsing | 100% | 100% | 100% | 100% |
+| Witch decision understood | 100% | 100% | 100% | 100% |
+| Discussion: says 'no comment' | 4% | 8% | 2% | 0% |
+| Discussion: states its own role | 0% | 0% | 0% | 0% |
+| Discussion: uses a role word at all | 0% | 0% | 0% | 0% |
+| Discussion: names another player | 93% | 95% | 100% | 92% |
+| Discussion: too long (>2 sentences or >40 words) | 0% | 2% | 0% | 0% |
+| Discussion: average words | 10 | 18 | 18 | 13 |
+| Discussion: distinct bigrams | 68% | 68% | 60% | 58% |
+| Discussion: identical answers | 2% | 0% | 2% | 21% |
+
+
+* **Every vote and night target is a bare, valid name: 100% for all four models** (it was 10 to 54% bare names for votes before, the rest being a name followed by a reason that had to be parsed).
+* **97 to 100% of the raw answers are valid JSON.** The few that are not (truncated by the token limit, or an unclosed string) fall back safely: a random valid target for votes and night actions, silence for the discussion, and never a potion for the witch.
+* The speed columns of this run are noisier than the earlier ones (other work was using the GPU while it ran): compare quality columns across runs, not seconds.
+* Discussion quality is unchanged: 92 to 100% of the lines name another player, nobody states their own role.
+
 ## Reading the results
 
 * **Validity is not a problem for any model.** All four give a usable name 100% of the time after parsing. The 4B QAT model is the least disciplined (62% bare names for night targets; one sample wrote a paragraph with markdown), which is the reason to use JSON-schema output (issue #23) instead of parsing prose.

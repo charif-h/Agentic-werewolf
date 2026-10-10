@@ -50,14 +50,15 @@ def test_discussion_prompt_asks_for_speech_not_for_permission():
     d = prompts.discussion_prompt("Ann", "", ["Ann", "Bob"], "seer", "STRATEGY", "FACTORS")
     assert "Nobody has spoken yet." in d and "Secret: you are a seer. STRATEGY" in d and "FACTORS" in d
     assert "Good replies look like this" in d and d.count('- "') == 3          # few-shot examples
-    assert d.rstrip().endswith("answer exactly: no comment")
+    assert d.rstrip().endswith('answer {"speak": false, "message": ""}.')
+    assert 'Answer in JSON: {"speak": true, "message":' in d
     assert "Do you want to" not in d       # a yes/no question made small models answer "Yes, please."
 
 
 def test_vote_prompt_ends_with_the_instruction():
     v = prompts.vote_prompt("Ann", "werewolf", "VOTING", "talk", ["Bob", "Cy"])
     assert "Candidates: Bob, Cy" in v and "Secret: you are a werewolf. VOTING" in v
-    assert v.rstrip().endswith("Answer with ONLY one name from the candidates.")
+    assert v.rstrip().endswith('Answer in JSON: {"target": "<name>"}.')
     assert "Nobody spoke." in prompts.vote_prompt("Ann", "x", "y", " ", ["Bob"])
 
 
