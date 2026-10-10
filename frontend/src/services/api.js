@@ -1,6 +1,6 @@
 // Talks to the backend. In development and behind nginx the paths are relative (/api/...),
 // so the page and the API share one origin. VITE_API_URL points somewhere else if needed.
-const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+export const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -43,7 +43,9 @@ export const gameApi = {
 
   getGameState: (gameId) => request('GET', `/api/games/${gameId}`),
   startGame: (gameId) => request('POST', `/api/games/${gameId}/start`),
-  nextPhase: (gameId) => request('POST', `/api/games/${gameId}/next-phase`),
+  // background: the server answers 202 at once and reports progress on the WebSocket
+  nextPhase: (gameId, { background = false } = {}) =>
+    request('POST', `/api/games/${gameId}/next-phase${background ? '?background=true' : ''}`),
   getPlayers: (gameId) => request('GET', `/api/games/${gameId}/players`),
   deleteGame: (gameId) => request('DELETE', `/api/games/${gameId}`),
 };

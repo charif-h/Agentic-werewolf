@@ -184,3 +184,25 @@ def test_a_busy_game_rejects_a_second_phase_but_other_games_play_on(client):
         assert client.post(f"/api/games/{other}/next-phase").status_code == 200
     finally:
         session.lock.release()
+
+
+def test_websocket_announces_the_end_of_the_game(client):
+    game_id = create(client, 6)
+    client.post(f"/api/games/{game_id}/start")
+    kinds = []
+    with client.websocket_connect(f"/ws/{game_id}") as ws:
+        for _ in range(60):
+            data = client.post(f"/api/games/{game_id}/next-phase").json()["data"]
+            while True:
+                message = ws.receive_json()
+                kinds.append(message["type"])
+                if message["type"] == "phase_change":
+                    break
+            if data.get("game_ended"):
+                ended = ws.receive_json()
+                break
+        else:
+            pytest.fail("the game never ended")
+    assert ended["type"] == "game_ended"
+    assert ended["data"]["winner"] in TEAMS and ended["data"]["announcement"]
+    assert "game_ended" not in kinds              # sent once, right after the final phase_change

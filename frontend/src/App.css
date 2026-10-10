@@ -210,3 +210,25 @@ button.danger:hover {
   border-radius: 5px;
   margin: 20px 0;
 }
+
+/* Live connection and result */
+.connection {
+  align-self: center;
+  font-size: 0.9em;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.connection.open { color: #4ecdc4; }
+.connection.connecting, .connection.reconnecting { color: #ffd166; }
+.connection.closed { color: #ff6b6b; }
+
+.winner {
+  text-align: center;
+  font-size: 1.4em;
+  padding: 12px;
+  margin: 12px 0;
+  border-radius: 8px;
+  background: rgba(78, 205, 196, 0.15);
+  color: #4ecdc4;
+}

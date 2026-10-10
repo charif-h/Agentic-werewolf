@@ -1,92 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import './App.css';
 import gameApi from './services/api.js';
 import PlayerCard from './components/PlayerCard.jsx';
 import GameLog from './components/GameLog.jsx';
+import { useGame } from './hooks/useGame.js';
+
+const PHASE_LABELS = {
+  setup: '⚙️ Setup',
+  night: '🌙 Night',
+  day: '☀️ Day',
+  discussion: '💬 Discussion',
+  voting: '🗳️ Voting',
+  ended: '🏁 Game Ended',
+};
+
+const CONNECTION_LABELS = {
+  connecting: 'Connecting…',
+  open: 'Live',
+  reconnecting: 'Reconnecting…',
+  closed: 'Not connected',
+};
 
 function App() {
-  const [gameId, setGameId] = useState(null);
-  const [gameState, setGameState] = useState(null);
-  const [players, setPlayers] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const { state, createGame, startGame, nextPhase, refresh } = useGame();
   const [model, setModel] = useState(null);
 
   // Load the local model status on mount
   useEffect(() => {
-    loadModel();
+    gameApi.getModel().then(setModel).catch((err) => console.error('Error loading model status:', err));
   }, []);
 
-  const loadModel = async () => {
-    try {
-      setModel(await gameApi.getModel());
-    } catch (err) {
-      console.error('Error loading model status:', err);
-    }
-  };
-
-  const createGame = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const created = await gameApi.createGame(8);
-      setGameId(created.game_id);
-      await loadGameState(created.game_id);
-      await loadPlayers(created.game_id);
-    } catch (err) {
-      setError('Failed to create game: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadGameState = async (id = gameId) => {
-    try {
-      const data = await gameApi.getGameState(id);
-      setGameState(data);
-    } catch (err) {
-      console.error('Error loading game state:', err);
-    }
-  };
-
-  const loadPlayers = async (id = gameId) => {
-    try {
-      const data = await gameApi.getPlayers(id);
-      setPlayers(data.players || []);
-    } catch (err) {
-      console.error('Error loading players:', err);
-    }
-  };
-
-  const startGame = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      await gameApi.startGame(gameId);
-      await loadGameState();
-    } catch (err) {
-      setError('Failed to start game: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const nextPhase = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      await gameApi.nextPhase(gameId);
-      await loadGameState();
-      await loadPlayers();
-    } catch (err) {
-      setError('Failed to progress phase: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const alivePlayers = players.filter(p => p.status === 'alive');
-  const deadPlayers = players.filter(p => p.status === 'dead');
+  const alivePlayers = state.players.filter((p) => p.status === 'alive');
+  const deadPlayers = state.players.filter((p) => p.status === 'dead');
+  const hasGame = state.gameId && state.phase;
 
   return (
     <div className="app">
@@ -104,40 +50,55 @@ function App() {
         )}
       </div>
 
-      {error && (
-        <div className="error">
-          <strong>Error:</strong> {error}
+      {state.error && (
+        <div className="error" role="alert">
+          <strong>Error:</strong> {state.error}
         </div>
       )}
 
       <div className="controls">
-        <button onClick={createGame} disabled={loading}>
+        <button onClick={() => createGame(8)} disabled={state.busy}>
           Create New Game (8 Players)
         </button>
-        {gameState && gameState.phase === 'setup' && (
-          <button onClick={startGame} disabled={loading}>
+        {hasGame && state.phase === 'setup' && (
+          <button onClick={startGame} disabled={state.busy}>
             Start Game
           </button>
         )}
-        {gameState && gameState.phase !== 'setup' && gameState.phase !== 'ended' && (
-          <button onClick={nextPhase} disabled={loading}>
+        {hasGame && state.phase !== 'setup' && state.phase !== 'ended' && (
+          <button onClick={nextPhase} disabled={state.busy}>
             Next Phase
           </button>
         )}
-        {gameState && (
-          <button onClick={() => loadGameState()} disabled={loading}>
+        {hasGame && (
+          <button onClick={() => refresh()} disabled={state.busy}>
             Refresh
           </button>
         )}
+        {hasGame && (
+          <span className={`connection ${state.connection}`} title="Live connection to the game">
+            ● {CONNECTION_LABELS[state.connection]}
+          </span>
+        )}
       </div>
 
-      {loading && <div className="loading">Processing...</div>}
+      {state.busy && (
+        <div className="loading" role="status">
+          {state.speaking ? `${state.speaking} just spoke…` : 'The players are thinking…'}
+        </div>
+      )}
 
-      {gameState && (
+      {state.winner && (
+        <div className="winner" role="status">
+          🏆 The {state.winner} win!
+        </div>
+      )}
+
+      {hasGame && (
         <div className="game-container">
           <div className="players-panel">
             <h2>Players ({alivePlayers.length} alive)</h2>
-            {alivePlayers.map(player => (
+            {alivePlayers.map((player) => (
               <PlayerCard key={player.id} player={player} />
             ))}
             {deadPlayers.length > 0 && (
@@ -145,7 +106,7 @@ function App() {
                 <h2 style={{ marginTop: '20px', color: '#ff6b6b' }}>
                   Eliminated ({deadPlayers.length})
                 </h2>
-                {deadPlayers.map(player => (
+                {deadPlayers.map((player) => (
                   <PlayerCard key={player.id} player={player} />
                 ))}
               </>
@@ -154,27 +115,18 @@ function App() {
 
           <div className="game-board">
             <div className="phase-indicator">
-              <h2>
-                {gameState.phase === 'setup' && '⚙️ Setup'}
-                {gameState.phase === 'night' && '🌙 Night'}
-                {gameState.phase === 'day' && '☀️ Day'}
-                {gameState.phase === 'discussion' && '💬 Discussion'}
-                {gameState.phase === 'voting' && '🗳️ Voting'}
-                {gameState.phase === 'ended' && '🏁 Game Ended'}
-              </h2>
-              <p>Day {gameState.day_number}</p>
+              <h2>{PHASE_LABELS[state.phase] || state.phase}</h2>
+              <p>Day {state.day}</p>
             </div>
 
-            <GameLog logs={gameState.game_log || []} />
+            <GameLog logs={state.log} />
           </div>
         </div>
       )}
 
-      {!gameState && !loading && (
+      {!hasGame && (
         <div style={{ textAlign: 'center', padding: '60px', color: '#888' }}>
-          <p style={{ fontSize: '1.5em' }}>
-            Click "Create New Game" to begin
-          </p>
+          <p style={{ fontSize: '1.5em' }}>Click &quot;Create New Game&quot; to begin</p>
         </div>
       )}
     </div>

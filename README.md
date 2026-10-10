@@ -110,7 +110,7 @@ Each game has its own id, so several games can run at once. Idle games are remov
 | GET | `/api/games/{id}/players` | player profiles |
 | DELETE | `/api/games/{id}` | delete the game |
 | GET | `/api/model` | local model status: Ollama reachable? model installed? |
-| WS | `/ws/{id}` | live events of one game: `player_spoke`, `vote_cast`, `phase_change`, `error` (messages you send are echoed) |
+| WS | `/ws/{id}` | live events of one game: `player_spoke`, `vote_cast`, `phase_change`, `game_ended`, `error` (messages you send are echoed) |
 | GET | `/api/health` | liveness check and number of running games |
 
 ```bash

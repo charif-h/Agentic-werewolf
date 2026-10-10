@@ -127,6 +127,10 @@ async def _play_phase(game_id: str, session: GameSession) -> dict:
     try:
         result = public_phase_result(game, await asyncio.to_thread(advance_phase, game))
         await state.manager.broadcast(game_id, {"type": "phase_change", "data": result})
+        if result.get("game_ended"):
+            await state.manager.broadcast(game_id, {"type": "game_ended", "data": {
+                "winner": result.get("winner"), "announcement": result.get("end_announcement"),
+            }})
         return result
     finally:
         game.on_event = None

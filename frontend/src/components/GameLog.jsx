@@ -1,6 +1,15 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 
 const GameLog = ({ logs }) => {
+  const endRef = useRef(null);
+
+  // Keep the newest line in view while messages arrive
+  useEffect(() => {
+    if (endRef.current && endRef.current.scrollIntoView) {
+      endRef.current.scrollIntoView({ block: 'nearest' });
+    }
+  }, [logs.length]);
+
   const getLogClass = (entry) => {
     if (entry.includes('[GAME MASTER]')) return 'game-master';
     if (entry.includes('[VOTE]')) return 'system';
@@ -8,7 +17,7 @@ const GameLog = ({ logs }) => {
   };
 
   return (
-    <div className="game-log">
+    <div className="game-log" aria-live="polite">
       <h3>Game Log</h3>
       {logs.length === 0 ? (
         <p style={{ color: '#888' }}>No events yet...</p>
@@ -19,6 +28,7 @@ const GameLog = ({ logs }) => {
           </div>
         ))
       )}
+      <div ref={endRef} />
     </div>
   );
 };
