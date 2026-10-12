@@ -20,6 +20,7 @@ from backend.roles import get_handler
 logger = logging.getLogger(__name__)
 
 DECISION_TOKENS = 60      # a JSON object holding a name
+DIARY_TOKENS = 600         # a summary and one opinion per other player
 SPEECH_TOKENS = 160       # a JSON object holding one or two sentences
 
 
@@ -38,6 +39,8 @@ class PlayerAgent:
         self.llm = llm
         self.memory: List[Message] = []  # Store conversation history
         self.knowledge: List[str] = []  # Secret facts learned during the game
+        self.last_vote: Optional[str] = None   # whom this player voted for most recently
+        self.diary: List[Dict[str, Any]] = []  # One entry per night and day, see `write_diary`
 
     @property
     def handler(self):
@@ -156,6 +159,14 @@ class PlayerAgent:
         names = game_state.get('valid_targets', [])
         return self._choose_target(game_state, self.handler.night_prompt(names), names)
 
+    def _knowledge_with_notes(self) -> List[str]:
+        """Secret facts plus the opinions of the latest diary entry, so that what the player
+        says and votes follows what they wrote down"""
+        notes = prompts.diary_notes(self.diary[-1] if self.diary else None)
+        if not notes:
+            return self.knowledge
+        return self.knowledge + ["Your private notes after the last night or day:"] + notes
+
     def add_knowledge(self, fact: str) -> None:
         """Remember a secret fact (e.g. the seer's findings); it appears in later prompts"""
         self.knowledge.append(fact)
@@ -190,6 +201,38 @@ class PlayerAgent:
         action = prompts.hunter_prompt(self.handler.death_shot_instruction, targets)
         return self._choose_target(game_state, action, targets)
 
+    def write_diary(self, step: str, events: str, others: List[str]) -> Optional[Dict[str, Any]]:
+        """
+        Write the private diary entry for a step ("Night 1", "Day 2"): a summary and an opinion
+        of every player in `others`, in the voice of this player's personality
+
+        Args:
+            step: Name of the step that just ended
+            events: What happened during it (the game log lines)
+            others: Names of the other living players
+
+        Returns:
+            The entry (also appended to `self.diary`), or None if the model gave no valid answer
+        """
+        if not others:
+            return None
+        profile = self.profile
+        previous = self.diary[-1]["summary"] if self.diary else None
+        context = prompts.diary_prompt(
+            profile.name, profile.role.value, profile.personality.value, step,
+            self._fit_conversation(events), others, previous, self.knowledge,
+            self.last_vote if step.startswith("Day") else None,
+        )
+        system_prompt = prompts.short_reply_system_prompt(profile.name, profile.personality.value)
+        entry = schemas.parse_diary(
+            self._ask(system_prompt, context, schemas.diary_schema(others), DIARY_TOKENS), others)
+        if entry is None:
+            self._note_invalid_answer()
+            return None
+        entry["step"] = step
+        self.diary.append(entry)
+        return entry
+
     def discuss(self, conversation_history: str, alive_players: list[str]) -> str:
         """
         Generate a strategic comment based on conversation history and role
@@ -206,7 +249,7 @@ class PlayerAgent:
             self.profile.name, conversation_history, alive_players, self.profile.role.value,
             self.handler.discussion_strategy,
             self._should_respond_to_conversation(conversation_history),
-            self.knowledge,
+            self._knowledge_with_notes(),
         )
 
         reply = self._speak(context)
@@ -275,7 +318,7 @@ class PlayerAgent:
 
         context = prompts.vote_prompt(
             self.profile.name, self.profile.role.value, self.handler.voting_strategy,
-            self._fit_conversation(conversation_history), other_players, self.knowledge,
+            self._fit_conversation(conversation_history), other_players, self._knowledge_with_notes(),
         )
         system_prompt = prompts.short_reply_system_prompt(
             self.profile.name, self.profile.personality.value
@@ -285,7 +328,8 @@ class PlayerAgent:
         target = schemas.parse_target(raw, other_players)
         if target is None:
             self._note_invalid_answer()
-        return target or random.choice(other_players)
+        self.last_vote = target or random.choice(other_players)
+        return self.last_vote
 
     @staticmethod
     def _note_invalid_answer() -> None:

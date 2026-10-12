@@ -1,7 +1,7 @@
 """What the API shows to clients (no hidden information)"""
 from backend.config import get_settings
 from backend.game.game_logic import WerewolfGame
-from backend.models.game_models import PlayerProfile, PlayerStatus
+from backend.models.game_models import GamePhase, PlayerProfile, PlayerStatus
 
 
 def serialize_player(player: PlayerProfile, detailed: bool = False) -> dict:
@@ -23,6 +23,12 @@ def serialize_player(player: PlayerProfile, detailed: bool = False) -> dict:
     if player.role and (get_settings().reveal_roles or player.status == PlayerStatus.DEAD):
         data["role"] = player.role.value
     return data
+
+
+def diary_visible(player: PlayerProfile, game: WerewolfGame) -> bool:
+    """A diary tells the player's secret role and plans: same rule as the role itself"""
+    return (get_settings().reveal_roles or player.status == PlayerStatus.DEAD
+            or game.state.phase == GamePhase.ENDED)
 
 
 def public_night_results(game: WerewolfGame, results: dict) -> dict:

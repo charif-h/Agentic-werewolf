@@ -35,12 +35,14 @@ describe('gameApi', () => {
     await gameApi.startGame('g1');
     await gameApi.nextPhase('g1');
     await gameApi.getPlayers('g1');
+    await gameApi.getDiary('g1', 'p2');
     await gameApi.deleteGame('g1');
     expect(fetch.mock.calls.map(([url, o]) => `${o.method} ${url}`)).toEqual([
       'GET /api/games/g1',
       'POST /api/games/g1/start',
       'POST /api/games/g1/next-phase',
       'GET /api/games/g1/players',
+      'GET /api/games/g1/players/p2/diary',
       'DELETE /api/games/g1',
     ]);
     expect(fetch.mock.calls[0][1].body).toBeUndefined();

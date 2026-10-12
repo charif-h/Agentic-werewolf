@@ -13,7 +13,7 @@ const ROLE_LABELS = {
  * One player. A role is shown only when the player is dead (everybody learns it then) or
  * when `showRole` is on (spectator mode, which needs the server to send the roles).
  */
-const PlayerCard = ({ player, showRole = false }) => {
+const PlayerCard = ({ player, showRole = false, onOpenDiary }) => {
   const isDead = player.status === 'dead';
   const visible = player.role && (isDead || showRole);
   const secret = visible && !isDead; // shown only because of spectator mode
@@ -38,6 +38,11 @@ const PlayerCard = ({ player, showRole = false }) => {
       <p style={{ fontSize: '0.8em', marginTop: '5px' }}>
         {player.personality_description}
       </p>
+      {onOpenDiary && (
+        <button className="diary-button" onClick={() => onOpenDiary(player)}>
+          📖 Diary
+        </button>
+      )}
       {isDead && (
         <p style={{ color: '#ff6b6b', fontWeight: 'bold' }}>
           ☠️ ELIMINATED

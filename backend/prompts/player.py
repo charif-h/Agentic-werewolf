@@ -41,6 +41,11 @@ TARGET_ANSWER_FORMAT = 'Answer in JSON: {"target": "<name>"}.'
 WITCH_ANSWER_FORMAT = ('Answer in JSON: {"save": true or false, "poison": "<name>" or "none"}. '
                        'Use true / a name only for a potion you still have.')
 
+DIARY_ANSWER_FORMAT = (
+    '{"summary": "<two sentences on how you feel about this step>", "opinions": [{"player": "<name>", '
+    '"reason": "<one short sentence>", "guess": "werewolf" or "villager" or "unsure", '
+    '"confidence": "low" or "medium" or "high"}]}. Straight quotes only.')
+
 ROLE_WORDS = ("werewolf", "werewolves", "villager", "villagers", "seer", "witch", "hunter", "guard")
 
 # Examples of short in-character replies (shown to the model in the discussion prompt)
@@ -54,6 +59,15 @@ DISCUSSION_EXAMPLES = (
 def personality_behavior(personality: str) -> str:
     """Short description of how a personality type behaves"""
     return PERSONALITY_BEHAVIOR.get(personality, "neutral")
+
+
+def diary_notes(entry: Optional[dict]) -> List[str]:
+    """The opinions of a diary entry as lines of private notes for later prompts (empty without entry)"""
+    if not entry:
+        return []
+    words = {"werewolf": "you suspect", "villager": "you trust", "unsure": "you are unsure about"}
+    return [f"{entry['step']}, {words[o['guess']]} {o['player']} ({o['confidence']} confidence): {o['reason']}"
+            for o in entry["opinions"]]
 
 
 def knowledge_block(knowledge: Optional[List[str]]) -> str:
@@ -173,6 +187,25 @@ def witch_prompt(victim: Optional[str], can_save: bool, can_poison: bool,
 def hunter_prompt(instruction: str, targets: List[str]) -> str:
     """Ask the dying hunter who to shoot"""
     return f"{instruction} from these players: {', '.join(targets)}. {TARGET_ANSWER_FORMAT}"
+
+
+def diary_prompt(name: str, role: str, personality: str, step: str, events: str,
+                 others: List[str], previous: Optional[str] = None,
+                 knowledge: Optional[List[str]] = None, vote: Optional[str] = None) -> str:
+    """Ask a player to write their private diary entry for the step that just ended"""
+    voted = f"\nYou voted to eliminate {vote}, so you suspect {vote}.\n" if vote else ""
+    before = f"\nYour last diary entry said: {previous}\n" if previous else ""
+    return f"""You are {name}, writing your private diary. Nobody else reads it, so be honest about what you think.
+Secret: you are a {role}. Your personality ({personality}): {personality_behavior(personality)}. Write the way you think.
+{knowledge_block(knowledge)}{before}{voted}
+What happened during {step}:
+{events if events.strip() else "Nothing notable."}
+
+Write what you think of {step}, then give your opinion of EACH of these players: {', '.join(others)}.
+For each one give a short reason that refers to what they said or did, then your conclusion:
+"werewolf" = you suspect them, "villager" = you trust them, "unsure" = you cannot tell; and how sure you are (low, medium or high).
+The conclusion MUST agree with the reason: a reason that doubts someone means "werewolf", a reason that trusts someone means "villager".
+Answer in JSON: {DIARY_ANSWER_FORMAT}"""
 
 
 def leaks_own_role(text: str, role: str) -> bool:

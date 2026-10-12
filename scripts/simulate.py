@@ -50,6 +50,10 @@ class RandomPlayerClient:
         elif "speak" in properties:
             speak = random.random() < 0.8
             answer = {"speak": speak, "message": random.choice(["Bob looks odd.", "I trust Cy."]) if speak else ""}
+        elif "opinions" in properties:
+            names = properties["opinions"]["items"]["properties"]["player"]["enum"]
+            answer = {"summary": "Nothing clear yet.", "opinions": [
+                {"player": n, "guess": "unsure", "confidence": "low", "reason": "No proof."} for n in names]}
         else:
             answer = {"save": False, "poison": "none"}
         metrics = current_metrics()

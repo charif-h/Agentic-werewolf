@@ -3,6 +3,7 @@ import './App.css';
 import PlayerCard from './components/PlayerCard.jsx';
 import GameLog from './components/GameLog.jsx';
 import LlmStats from './components/LlmStats.jsx';
+import DiaryModal from './components/DiaryModal.jsx';
 import ModelStatus from './components/ModelStatus.jsx';
 import { NightSummary, VoteTally } from './components/Summaries.jsx';
 import { useGame } from './hooks/useGame.js';
@@ -29,6 +30,11 @@ function App() {
   const model = useModelStatus();
   const [spectate, setSpectate] = useState(false); // show the roles of living players
   const showRoles = spectate && state.rolesRevealed;
+  const [diaryPlayerId, setDiaryPlayerId] = useState(null);
+  const diaryPlayer = state.players.find((p) => p.id === diaryPlayerId);
+  // A diary tells the secret role, so it follows the rule of roles (the server enforces it too)
+  const diaryAllowed = (player) => showRoles || player.status === 'dead' || state.phase === 'ended';
+  const openDiary = (player) => setDiaryPlayerId(player.id);
 
   const alivePlayers = state.players.filter((p) => p.status === 'alive');
   const deadPlayers = state.players.filter((p) => p.status === 'dead');
@@ -107,7 +113,12 @@ function App() {
           <div className="players-panel">
             <h2>Players ({alivePlayers.length} alive)</h2>
             {alivePlayers.map((player) => (
-              <PlayerCard key={player.id} player={player} showRole={showRoles} />
+              <PlayerCard
+                key={player.id}
+                player={player}
+                showRole={showRoles}
+                onOpenDiary={diaryAllowed(player) ? openDiary : undefined}
+              />
             ))}
             {deadPlayers.length > 0 && (
               <>
@@ -115,7 +126,12 @@ function App() {
                   Eliminated ({deadPlayers.length})
                 </h2>
                 {deadPlayers.map((player) => (
-                  <PlayerCard key={player.id} player={player} showRole={showRoles} />
+                  <PlayerCard
+                    key={player.id}
+                    player={player}
+                    showRole={showRoles}
+                    onOpenDiary={diaryAllowed(player) ? openDiary : undefined}
+                  />
                 ))}
               </>
             )}
@@ -137,6 +153,15 @@ function App() {
             <GameLog logs={state.log} />
           </div>
         </div>
+      )}
+
+      {hasGame && diaryPlayer && (
+        <DiaryModal
+          gameId={state.gameId}
+          player={diaryPlayer}
+          version={`${state.phase}-${state.day}`}
+          onClose={() => setDiaryPlayerId(null)}
+        />
       )}
 
       {!hasGame && (
