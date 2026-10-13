@@ -45,6 +45,8 @@ class WerewolfGame:
         self.player_agents: Dict[str, PlayerAgent] = {}
         self.game_master = GameMaster()
         self.metrics = LLMMetrics()      # model calls made for this game
+        self._night_start = 0            # index in the game log where the current night began
+        self._day_start = 0              # ... and the current day
         # Optional callback(event_type, data) for live progress (player_spoke, vote_cast);
         # it is called from whatever thread plays the phase
         self.on_event: Optional[Callable[[str, dict], None]] = None
@@ -98,6 +100,7 @@ class WerewolfGame:
             Night announcement
         """
         rules.start_night(self.state)
+        self._night_start = len(self.state.game_log)
 
         announcement = self.game_master.announce_night(self.state.day_number)
         self.state.game_log.append(f"[GAME MASTER] {announcement}")
@@ -240,6 +243,7 @@ class WerewolfGame:
             Day announcement
         """
         self.state.phase = GamePhase.DAY
+        self._day_start = len(self.state.game_log)
 
         announcement = self.game_master.announce_day(
             self.state.day_number, rules.describe_night(self.state)
@@ -247,6 +251,28 @@ class WerewolfGame:
         self.state.game_log.append(f"[GAME MASTER] {announcement}")
 
         return announcement
+
+    def write_diaries(self, night: bool) -> None:
+        """
+        Let every living player write their diary entry for the night or the day that
+        just ended, from the game log since it began. A player whose model call fails
+        simply misses that entry.
+        """
+        if not get_settings().diary_enabled:
+            return
+        step = f"{'Night' if night else 'Day'} {self.state.day_number}"
+        start = self._night_start if night else self._day_start
+        events = "\n".join(self.state.game_log[start:])
+        alive = rules.alive_players(self.state)
+        for player in alive:
+            others = [p.name for p in alive if p.id != player.id]
+            try:
+                entry = self.player_agents[player.id].write_diary(step, events, others)
+            except Exception as e:
+                logger.warning("Diary failed for %s: %s", player.name, e)
+                continue
+            if entry:
+                self._emit("diary_written", {"player": player.name, "step": step})
 
     def conduct_discussion(self, max_rounds: Optional[int] = None) -> List[str]:
         """

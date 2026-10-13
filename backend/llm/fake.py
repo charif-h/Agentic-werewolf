@@ -15,7 +15,7 @@ def fit_to_schema(text: str, json_schema: Dict[str, Any]) -> str:
 
     Real models answer in JSON when a schema is given; scripted tests would
     rather write "Bob". Answers that already are valid JSON are left alone.
-    Understands the schemas of `backend.llm.schemas`: target, discussion, witch.
+    Understands the schemas of `backend.llm.schemas`: target, discussion, witch, diary.
     """
     try:
         if isinstance(json.loads(text), dict):
@@ -29,6 +29,11 @@ def fit_to_schema(text: str, json_schema: Dict[str, Any]) -> str:
     if "speak" in properties:
         silent = not reply or reply.lower().strip(". ") == "no comment"
         return json.dumps({"speak": not silent, "message": "" if silent else reply})
+    if "opinions" in properties:
+        names = properties["opinions"]["items"]["properties"]["player"]["enum"]
+        return json.dumps({"summary": reply or "Nothing clear yet.", "opinions": [
+            {"player": name, "guess": "unsure", "confidence": "low", "reason": "Not enough to go on."}
+            for name in names]})
     if "save" in properties:
         save = re.search(r"\b(save|heal)\b", reply, re.IGNORECASE) is not None
         poison = "none"

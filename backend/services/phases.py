@@ -28,9 +28,11 @@ def _end_or_next_night(game: WerewolfGame, result: Dict) -> Dict:
 def _from_night(game: WerewolfGame) -> Dict:
     """Night -> day: play the night actions and announce the dawn"""
     night_results = game.process_night_actions()
+    announcement = game.start_day()
+    game.write_diaries(night=True)
     return {
         "phase": "day",
-        "announcement": game.start_day(),
+        "announcement": announcement,
         "night_results": night_results,
     }
 
@@ -48,6 +50,8 @@ def _from_discussion(game: WerewolfGame) -> Dict:
         "eliminated": eliminated.name if eliminated else None,
         "votes": votes,
     }
+    if not game.check_win_condition():     # nobody reads a diary after the last vote
+        game.write_diaries(night=False)
     return _end_or_next_night(game, result)
 
 

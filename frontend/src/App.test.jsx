@@ -264,4 +264,42 @@ describe('App', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Ollama is not running');
     within(screen.getByRole('alert')).getByText(/Error/);
   });
+  describe('diary', () => {
+    const ENTRY = {
+      step: 'Night 1', summary: 'A quiet night.',
+      opinions: [{ player: 'Bob', guess: 'werewolf', confidence: 'high', reason: 'He never talks.' }],
+    };
+
+    it('only offers the diary of players whose secrets are public', async () => {
+      await startedGame();
+      // Bob is dead; Ann is alive and the roles are hidden
+      expect(screen.getAllByRole('button', { name: /Diary/ })).toHaveLength(1);
+    });
+
+    it('opens the diary of an eliminated player, newest entry first', async () => {
+      const original = fetch.getMockImplementation();
+      fetch.mockImplementation((url, options) => (url === '/api/games/g1/players/p2/diary'
+        ? json({ player: 'Bob', entries: [ENTRY, { ...ENTRY, step: 'Day 1', summary: 'A heated vote.' }] })
+        : original(url, options)));
+      await startedGame();
+      await userEvent.click(screen.getByRole('button', { name: /Diary/ }));
+      const dialog = await screen.findByRole('dialog', { name: 'Diary of Bob' });
+      expect(within(dialog).getByText('A quiet night.')).toBeInTheDocument();
+      expect(within(dialog).getAllByText(/He never talks/)).toHaveLength(2);
+      const steps = within(dialog).getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+      expect(steps).toEqual(['☀️ Day 1', '🌙 Night 1']);
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Close diary' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('shows the server error when the diary cannot be read', async () => {
+      const original = fetch.getMockImplementation();
+      fetch.mockImplementation((url, options) => (url.endsWith('/diary')
+        ? json({ detail: 'The diary of a living player is secret' }, 403)
+        : original(url, options)));
+      await startedGame();
+      await userEvent.click(screen.getByRole('button', { name: /Diary/ }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('secret');
+    });
+  });
 });

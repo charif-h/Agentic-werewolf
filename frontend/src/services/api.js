@@ -47,6 +47,8 @@ export const gameApi = {
   nextPhase: (gameId, { background = false } = {}) =>
     request('POST', `/api/games/${gameId}/next-phase${background ? '?background=true' : ''}`),
   getPlayers: (gameId) => request('GET', `/api/games/${gameId}/players`),
+  // Private diary of a player (403 while the player is alive and the roles are hidden)
+  getDiary: (gameId, playerId) => request('GET', `/api/games/${gameId}/players/${playerId}/diary`),
   deleteGame: (gameId) => request('DELETE', `/api/games/${gameId}`),
 };
 
