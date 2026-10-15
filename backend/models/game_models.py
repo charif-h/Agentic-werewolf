@@ -5,25 +5,7 @@ from enum import Enum
 from typing import Optional, List
 from pydantic import BaseModel, Field
 
-
-class PersonalityType(str, Enum):
-    """16 Personality Types based on MBTI"""
-    INTJ = "INTJ"  # Architect
-    INTP = "INTP"  # Logician
-    ENTJ = "ENTJ"  # Commander
-    ENTP = "ENTP"  # Debater
-    INFJ = "INFJ"  # Advocate
-    INFP = "INFP"  # Mediator
-    ENFJ = "ENFJ"  # Protagonist
-    ENFP = "ENFP"  # Campaigner
-    ISTJ = "ISTJ"  # Logistician
-    ISFJ = "ISFJ"  # Defender
-    ESTJ = "ESTJ"  # Executive
-    ESFJ = "ESFJ"  # Consul
-    ISTP = "ISTP"  # Virtuoso
-    ISFP = "ISFP"  # Adventurer
-    ESTP = "ESTP"  # Entrepreneur
-    ESFP = "ESFP"  # Entertainer
+from backend.models.personality import BigFive, PersonaCheck
 
 
 class Sex(str, Enum):
@@ -62,31 +44,14 @@ class PlayerProfile(BaseModel):
     name: str
     sex: Sex
     age: int = Field(ge=18, le=80)
-    personality: PersonalityType
+    personality: BigFive
     role: Optional[Role] = None
     status: PlayerStatus = PlayerStatus.ALIVE
-    
+    persona_check: Optional[PersonaCheck] = None   # result of the psychological test, None until it ran
+
     def get_personality_description(self) -> str:
-        """Get detailed personality description for AI prompts"""
-        descriptions = {
-            PersonalityType.INTJ: "Strategic, analytical, and independent thinker. Plans ahead and values logic.",
-            PersonalityType.INTP: "Innovative, curious, and logical. Enjoys complex problem-solving.",
-            PersonalityType.ENTJ: "Bold, strong-willed leader. Good at making decisions and organizing.",
-            PersonalityType.ENTP: "Smart, curious debater. Enjoys intellectual challenges and arguing points.",
-            PersonalityType.INFJ: "Idealistic, organized advocate. Strong values and vision for the future.",
-            PersonalityType.INFP: "Poetic, kind mediator. Guided by principles and values.",
-            PersonalityType.ENFJ: "Charismatic, inspiring leader. Natural at bringing people together.",
-            PersonalityType.ENFP: "Enthusiastic, creative, and sociable. Free spirit with great people skills.",
-            PersonalityType.ISTJ: "Practical, fact-minded logistician. Reliable and thorough.",
-            PersonalityType.ISFJ: "Dedicated, warm protector. Always ready to defend loved ones.",
-            PersonalityType.ESTJ: "Excellent administrator, manages people and systems efficiently.",
-            PersonalityType.ESFJ: "Caring, social, and popular. Eager to help and please others.",
-            PersonalityType.ISTP: "Bold, practical experimenter. Master of tools and techniques.",
-            PersonalityType.ISFP: "Flexible, charming artist. Explores life with aesthetic sensibility.",
-            PersonalityType.ESTP: "Smart, energetic, and perceptive. Lives in the moment.",
-            PersonalityType.ESFP: "Spontaneous, enthusiastic entertainer. Enjoys life and people."
-        }
-        return descriptions.get(self.personality, "Unique personality")
+        """Detailed personality description for AI prompts (one line per Big Five trait)"""
+        return self.personality.describe()
 
 
 class Message(BaseModel):

@@ -31,12 +31,17 @@ from backend.game.targets import match_player_name, parse_witch_answer  # noqa: 
 from backend.llm import Message  # noqa: E402
 from backend.llm.schemas import parse_json  # noqa: E402
 from backend.llm.ollama_client import OllamaClient  # noqa: E402
-from backend.models.game_models import PersonalityType, PlayerProfile, Role, Sex  # noqa: E402
+from backend.models.game_models import PlayerProfile, Role, Sex
+from backend.models.personality import BigFive  # noqa: E402
 from backend.prompts import leaks_own_role  # noqa: E402
 
 NAMES = ["Ann", "Bob", "Cy", "Dee", "Eli", "Fay", "Gus", "Hal"]
-PERSONALITIES = [PersonalityType.INTJ, PersonalityType.ENFP, PersonalityType.ISFJ,
-                 PersonalityType.ESTP, PersonalityType.INFP, PersonalityType.ENTJ]
+PERSONALITIES = [BigFive(openness=4, conscientiousness=5, extraversion=2, agreeableness=2, neuroticism=1),
+                 BigFive(openness=5, conscientiousness=2, extraversion=5, agreeableness=4, neuroticism=3),
+                 BigFive(openness=2, conscientiousness=4, extraversion=2, agreeableness=5, neuroticism=4),
+                 BigFive(openness=3, conscientiousness=2, extraversion=4, agreeableness=1, neuroticism=2),
+                 BigFive(openness=5, conscientiousness=3, extraversion=1, agreeableness=4, neuroticism=5),
+                 BigFive(openness=3, conscientiousness=5, extraversion=5, agreeableness=2, neuroticism=1)]
 ROLE_WORDS = re.compile(r"\b(werewolf|werewolves|villager|villagers|seer|witch|hunter|guard)\b", re.I)
 
 CONVERSATIONS = [

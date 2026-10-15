@@ -3,7 +3,7 @@ from backend.agents.player_agent import PlayerAgent
 from backend.engine import rules
 from backend.llm import FakeLLMClient
 from backend.models.game_models import (
-    PersonalityType, PlayerProfile, Role, Sex,
+    BigFive, PlayerProfile, Role, Sex,
 )
 
 
@@ -11,7 +11,7 @@ def make_agent(answer, role=Role.WEREWOLF):
     """PlayerAgent whose LLM returns `answer` (or raises if it is an Exception)."""
     profile = PlayerProfile(
         id="p1", name="Ann", sex=Sex.FEMALE, age=30,
-        personality=PersonalityType.INTJ, role=role,
+        personality=BigFive(extraversion=2), role=role,
     )
     return PlayerAgent(profile, FakeLLMClient(answer))
 

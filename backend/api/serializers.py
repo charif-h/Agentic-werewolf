@@ -14,12 +14,15 @@ def serialize_player(player: PlayerProfile, detailed: bool = False) -> dict:
         "name": player.name,
         "sex": player.sex.value,
         "age": player.age,
-        "personality": player.personality.value,
+        "personality": player.personality.level_names(),
         "status": player.status.value,
         "role": None,
     }
     if detailed:
         data["personality_description"] = player.get_personality_description()
+        data["persona_check"] = (
+            {**player.persona_check.model_dump(), "confirmed": player.persona_check.confirmed}
+            if player.persona_check else None)
     if player.role and (get_settings().reveal_roles or player.status == PlayerStatus.DEAD):
         data["role"] = player.role.value
     return data

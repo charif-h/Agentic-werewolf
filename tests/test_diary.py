@@ -11,7 +11,7 @@ from backend.agents.player_agent import PlayerAgent
 from backend.api import serializers, state
 from backend.game.game_logic import WerewolfGame
 from backend.llm import FakeLLMClient, schemas
-from backend.models.game_models import PersonalityType, PlayerProfile, Role, Sex
+from backend.models.game_models import BigFive, PlayerProfile, Role, Sex
 from backend.services.phases import advance_phase
 from backend.services.sessions import SessionManager
 
@@ -20,7 +20,7 @@ OTHERS = ["Bob", "Cy"]
 
 def make_agent(responses, **kwargs):
     profile = PlayerProfile(id="p", name="Ann", sex=Sex.FEMALE, age=30,
-                            personality=PersonalityType.INTJ, role=Role.VILLAGER)
+                            personality=BigFive(extraversion=2), role=Role.VILLAGER)
     return PlayerAgent(profile, FakeLLMClient(responses, **kwargs))
 
 
@@ -143,7 +143,7 @@ def test_every_living_player_gets_a_night_and_a_day_entry():
 
 def test_diaries_can_be_turned_off(monkeypatch):
     monkeypatch.setattr("backend.game.game_logic.get_settings",
-                        lambda: type("S", (), {"diary_enabled": False})())
+                        lambda: type("S", (), {"diary_enabled": False, "psytest_enabled": False})())
     game = new_game()
     game.start_night()
     game.start_day()

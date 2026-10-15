@@ -57,6 +57,16 @@ def diary_schema(names: Iterable[str]) -> Dict[str, Any]:
     }
 
 
+def psytest_schema(count: int) -> Dict[str, Any]:
+    """`{"answers": [<1-5>, ...]}` with exactly `count` answers"""
+    return {
+        "type": "object",
+        "properties": {"answers": {"type": "array", "minItems": count, "maxItems": count,
+                                   "items": {"type": "integer", "enum": [1, 2, 3, 4, 5]}}},
+        "required": ["answers"],
+    }
+
+
 def witch_schema(poison_targets: Iterable[str]) -> Dict[str, Any]:
     """`{"save": bool, "poison": <a name or "none">}`"""
     return {
@@ -156,3 +166,13 @@ def parse_diary(text: Optional[str], names: Iterable[str]) -> Optional[Dict[str,
     if not opinions:
         return None
     return {"summary": data["summary"].strip(), "opinions": opinions}
+
+
+def parse_psytest(text: Optional[str], count: int) -> Optional[list]:
+    """The `count` answers (1-5) of a psychological test, or None if the answer is not valid"""
+    data = parse_json(text)
+    answers = data.get("answers") if data else None
+    if (not isinstance(answers, list) or len(answers) != count
+            or not all(isinstance(a, int) and not isinstance(a, bool) and 1 <= a <= 5 for a in answers)):
+        return None
+    return answers

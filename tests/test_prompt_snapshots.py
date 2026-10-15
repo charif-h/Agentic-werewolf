@@ -14,7 +14,7 @@ import pytest
 
 from backend.agents.player_agent import PlayerAgent
 from backend.llm import FakeLLMClient, to_alternating
-from backend.models.game_models import PersonalityType, PlayerProfile, Role, Sex
+from backend.models.game_models import BigFive, PlayerProfile, Role, Sex
 from backend.roles import all_handlers
 
 SNAPSHOTS = Path(__file__).parent / "snapshots"
@@ -34,7 +34,7 @@ GAME_STATE = {
 
 def make_agent(role: Role, knowledge=None) -> PlayerAgent:
     profile = PlayerProfile(id="p0", name="Ann", sex=Sex.FEMALE, age=34,
-                            personality=PersonalityType.ENFP, role=role)
+                            personality=BigFive(extraversion=4), role=role)
     agent = PlayerAgent(profile, FakeLLMClient("Bob"))
     for fact in knowledge or []:
         agent.add_knowledge(fact)

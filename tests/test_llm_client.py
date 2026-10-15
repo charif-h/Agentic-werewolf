@@ -9,7 +9,7 @@ from backend.agents.player_agent import PlayerAgent
 from backend.game.game_logic import WerewolfGame
 from backend.llm import ASSISTANT, SYSTEM, USER, FakeLLMClient, LLMClient, LLMError, Message
 from backend.llm.ollama_client import OllamaClient
-from backend.models.game_models import PersonalityType, PlayerProfile, Role, Sex
+from backend.models.game_models import BigFive, PlayerProfile, Role, Sex
 
 HELLO = [Message(SYSTEM, "be brief"), Message(USER, "hi")]
 
@@ -183,7 +183,7 @@ def test_game_creates_the_client_once_when_none_is_given():
 
 def test_agent_memory_holds_messages_and_is_replayed():
     profile = PlayerProfile(id="p", name="Ann", sex=Sex.FEMALE, age=30,
-                            personality=PersonalityType.INTJ, role=Role.SEER)
+                            personality=BigFive(extraversion=2), role=Role.SEER)
     llm = FakeLLMClient("Bob")
     agent = PlayerAgent(profile, llm)
     state = {'phase': 'night', 'day_number': 1, 'players': [], 'valid_targets': ['Bob']}

@@ -9,7 +9,7 @@ from backend.agents.player_agent import PlayerAgent
 from backend.game.game_logic import WerewolfGame
 from backend.game.targets import parse_witch_answer
 from backend.models.game_models import (
-    GameState, PersonalityType, PlayerProfile, PlayerStatus, Role, Sex,
+    GameState, BigFive, PlayerProfile, PlayerStatus, Role, Sex,
 )
 
 POISON_TARGETS = ["Bob", "Cy"]
@@ -46,7 +46,7 @@ def make_game(roles):
     names = ["Wolf", "Bob", "Cy", "Dee", "Eli", "Fay", "Gus"]
     game.state = GameState(players=[
         PlayerProfile(id=f"p{i}", name=names[i], sex=Sex.MALE, age=30,
-                      personality=PersonalityType.INTJ, role=role)
+                      personality=BigFive(extraversion=2), role=role)
         for i, role in enumerate(roles)
     ])
     game.player_agents = {p.id: MagicMock() for p in game.state.players}
@@ -225,7 +225,7 @@ def test_knowledge_appears_in_prompts_only_when_present():
     assert "WHAT YOU KNOW" not in plain and "- Cy is a werewolf.\n\nReasons to speak" in rich
     assert "- Cy is a werewolf." in prompts.vote_prompt("Ann", "seer", "V", "talk", ["Cy"], ["Cy is a werewolf."])
     assert "- Cy is a werewolf." in prompts.player_system_prompt(
-        "Ann", 30, "female", "INTJ", "d", "role", ["Cy is a werewolf."])
+        "Ann", 30, "female", "d", "role", ["Cy is a werewolf."])
 
 
 def test_witch_and_hunter_prompts():
@@ -241,7 +241,7 @@ def test_witch_and_hunter_prompts():
 
 def test_agent_remembers_facts_and_uses_them_in_every_prompt():
     profile = PlayerProfile(id="p", name="Ann", sex=Sex.FEMALE, age=30,
-                            personality=PersonalityType.INTJ, role=Role.SEER)
+                            personality=BigFive(extraversion=2), role=Role.SEER)
     agent_ = PlayerAgent(profile, FakeLLMClient("Bob"))
     agent_.add_knowledge("Night 1: you saw that Bob is a werewolf.")
     agent_.discuss("[Bob] hi", ["Ann", "Bob"])

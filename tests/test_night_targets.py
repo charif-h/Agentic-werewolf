@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 from backend.game.game_logic import WerewolfGame
 from backend.game.targets import match_player_name, pick_target
 from backend.models.game_models import (
-    GameState, PersonalityType, PlayerProfile, PlayerStatus, Role, Sex,
+    GameState, BigFive, PlayerProfile, PlayerStatus, Role, Sex,
 )
 
 NAMES = ["Ann", "Bob", "Joanna"]
@@ -47,7 +47,7 @@ def make_game():
     game.state = GameState()
     game.state.players = [
         PlayerProfile(id=f"p{i}", name=n, sex=Sex.MALE, age=30,
-                      personality=PersonalityType.INTJ, role=r)
+                      personality=BigFive(extraversion=2), role=r)
         for i, (n, r) in enumerate([("Wolf", Role.WEREWOLF), ("Bob", Role.VILLAGER),
                                     ("Cy", Role.SEER)])
     ]

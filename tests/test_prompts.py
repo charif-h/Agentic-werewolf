@@ -5,29 +5,30 @@ import pytest
 from backend import prompts
 from backend.agents.player_agent import PlayerAgent
 from backend.llm import FakeLLMClient
-from backend.models.game_models import PersonalityType, PlayerProfile, Role, Sex
+from backend.models.personality import BEHAVIOR, TRAITS
+from backend.models.game_models import BigFive, PlayerProfile, Role, Sex
 
 
 def make_agent(role=Role.SEER, answer="Bob"):
     profile = PlayerProfile(id="p", name="Ann", sex=Sex.FEMALE, age=30,
-                            personality=PersonalityType.INTJ, role=role)
+                            personality=BigFive(extraversion=2), role=role)
     return PlayerAgent(profile, FakeLLMClient(answer))
 
 
-def test_personality_behavior_covers_every_type():
-    for personality in PersonalityType:
-        assert prompts.personality_behavior(personality.value) != "neutral"
-    assert prompts.personality_behavior("???") == "neutral"
+def test_every_level_of_every_trait_has_a_behavior():
+    for trait in TRAITS:
+        assert set(BEHAVIOR[trait]) == {1, 2, 3, 4, 5}
+        assert len(set(BEHAVIOR[trait].values())) == 5
 
 
 def test_player_system_prompt_is_short_and_has_persona_and_role():
-    text = prompts.player_system_prompt("Ann", 30, "female", "INTJ", "Strategic.", "You are the SEER.")
+    text = prompts.player_system_prompt("Ann", 30, "female", "- Extraversion: low - quiet.", "You are the SEER.")
     assert "You are Ann, a 30-year-old female" in text
-    assert "Personality (INTJ): Strategic." in text
+    assert "Big Five" in text and "- Extraversion: low - quiet." in text
     assert text.count("Your role: You are the SEER.") == 1
     assert "Never reveal your own role" in text
-    assert "Your role" not in prompts.player_system_prompt("Ann", 30, "female", "INTJ", "S.")
-    assert len(text.splitlines()) <= 4          # persona in a few lines (small model)
+    assert "Your role" not in prompts.player_system_prompt("Ann", 30, "female", "S.")
+    assert len(text.splitlines()) <= 6          # persona in a few lines (small model)
 
 
 def test_game_context_lists_alive_players_and_ends_with_the_action():
@@ -81,7 +82,7 @@ def test_agent_sends_role_and_strategy_prompts_to_the_llm():
     agent = make_agent(Role.SEER)
     agent.discuss("[Bob] hello", ["Ann", "Bob"])
     system, user = agent.llm.last_messages
-    assert "Personality (INTJ): independent and methodical" in system.content
+    assert "low extraversion (quiet, prefers to listen before speaking)" in system.content
     assert "Secret: you are a seer" in user.content
     assert agent.handler.discussion_strategy in user.content
 

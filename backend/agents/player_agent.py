@@ -12,6 +12,8 @@ from typing import Optional, Dict, Any, List
 from backend.models.game_models import PlayerProfile
 from backend.llm import ASSISTANT, SYSTEM, USER, LLMClient, Message, fit_text
 from backend.llm import schemas
+from backend.agents import psytest
+from backend.models.personality import PersonaCheck
 from backend.config import get_settings
 from backend.llm.metrics import current_metrics
 from backend import prompts
@@ -21,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 DECISION_TOKENS = 60      # a JSON object holding a name
 DIARY_TOKENS = 600         # a summary and one opinion per other player
+PSYTEST_TOKENS = 150      # a JSON array of 30 digits
 SPEECH_TOKENS = 160       # a JSON object holding one or two sentences
 
 
@@ -51,8 +54,7 @@ class PlayerAgent:
         """Build the system prompt based on player's personality and role"""
         profile = self.profile
         return prompts.player_system_prompt(
-            profile.name, profile.age, profile.sex.value, profile.personality.value,
-            profile.get_personality_description(),
+            profile.name, profile.age, profile.sex.value, profile.get_personality_description(),
             self.handler.description if profile.role else None,
             self.knowledge,
         )
@@ -219,11 +221,11 @@ class PlayerAgent:
         profile = self.profile
         previous = self.diary[-1]["summary"] if self.diary else None
         context = prompts.diary_prompt(
-            profile.name, profile.role.value, profile.personality.value, step,
+            profile.name, profile.role.value, profile.personality.summary(), step,
             self._fit_conversation(events), others, previous, self.knowledge,
             self.last_vote if step.startswith("Day") else None,
         )
-        system_prompt = prompts.short_reply_system_prompt(profile.name, profile.personality.value)
+        system_prompt = prompts.short_reply_system_prompt(profile.name, profile.personality.summary())
         entry = schemas.parse_diary(
             self._ask(system_prompt, context, schemas.diary_schema(others), DIARY_TOKENS), others)
         if entry is None:
@@ -232,6 +234,28 @@ class PlayerAgent:
         entry["step"] = step
         self.diary.append(entry)
         return entry
+
+    def take_psytest(self) -> PersonaCheck:
+        """
+        Answer the psychological test in character and compare the result with the
+        assigned Big Five levels. A trait that differs is flagged, the player still plays.
+        The result is stored in `profile.persona_check`.
+        """
+        profile = self.profile
+        system_prompt = prompts.player_system_prompt(
+            profile.name, profile.age, profile.sex.value, profile.get_personality_description())
+        context = prompts.psytest_prompt(profile.name, psytest.statements())
+        answers = schemas.parse_psytest(
+            self._ask(system_prompt, context, schemas.psytest_schema(len(psytest.ITEMS)), PSYTEST_TOKENS),
+            len(psytest.ITEMS))
+        if answers is None:
+            self._note_invalid_answer()
+        check = psytest.evaluate(answers, profile.personality)
+        profile.persona_check = check
+        metrics = current_metrics()
+        if metrics is not None and check.completed:
+            metrics.add_psytest(bool(check.flagged))
+        return check
 
     def discuss(self, conversation_history: str, alive_players: list[str]) -> str:
         """
@@ -265,7 +289,7 @@ class PlayerAgent:
     def _speak(self, context: str) -> str:
         """One attempt at a discussion answer; '' when silent, unclear or unreachable"""
         system_prompt = prompts.short_reply_system_prompt(
-            self.profile.name, self.profile.personality.value
+            self.profile.name, self.profile.personality.summary()
         )
         parsed = schemas.parse_discussion(
             self._ask(system_prompt, context, schemas.discussion_schema(), SPEECH_TOKENS)
@@ -321,7 +345,7 @@ class PlayerAgent:
             self._fit_conversation(conversation_history), other_players, self._knowledge_with_notes(),
         )
         system_prompt = prompts.short_reply_system_prompt(
-            self.profile.name, self.profile.personality.value
+            self.profile.name, self.profile.personality.summary()
         )
         raw = self._ask(system_prompt, context, schemas.target_schema(other_players), DECISION_TOKENS)
         # No valid answer (model down, nonsense): a random candidate keeps votes independent

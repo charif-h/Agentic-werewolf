@@ -90,10 +90,10 @@ def test_agent_counts_invalid_answers_and_role_leaks_in_the_tracked_game():
     from backend.agents.player_agent import PlayerAgent
     from backend.llm import FakeLLMClient
     from backend.llm.metrics import LLMMetrics, track
-    from backend.models.game_models import PersonalityType, PlayerProfile, Role, Sex
+    from backend.models.game_models import BigFive, PlayerProfile, Role, Sex
 
     profile = PlayerProfile(id="p", name="Ann", sex=Sex.FEMALE, age=30,
-                            personality=PersonalityType.INTJ, role=Role.SEER)
+                            personality=BigFive(extraversion=2), role=Role.SEER)
     metrics = LLMMetrics()
     with track(metrics):
         PlayerAgent(profile, FakeLLMClient("nonsense", wrap_json=False)).vote("", ["Ann", "Bob"])

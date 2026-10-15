@@ -1,6 +1,6 @@
 """Game Master templates and discussion pacing (no LLM)."""
 from backend.game.game_master import GameMaster
-from backend.models.game_models import PersonalityType, PlayerProfile, Sex
+from backend.models.game_models import BigFive, PlayerProfile, Sex
 
 gm = GameMaster()
 
@@ -11,7 +11,7 @@ def test_gm_has_no_llm():
 
 def test_announcements_contain_facts():
     players = [PlayerProfile(id=f"p{i}", name=f"P{i}", sex=Sex.MALE, age=30,
-                             personality=PersonalityType.INTJ) for i in range(3)]
+                             personality=BigFive(extraversion=2)) for i in range(3)]
     assert "3" in gm.narrate_game_start(players)
     assert "2" in gm.announce_night(2)
     assert "Bob was killed." in gm.announce_day(1, "Bob was killed.")

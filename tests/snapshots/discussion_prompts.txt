@@ -1,6 +1,6 @@
 ### guard
 [user]
-You are Ann, playing Werewolf. Personality (ENFP): enthusiastic and curious.
+You are Ann, playing Werewolf. Personality (Big Five): medium openness (open to new ideas when they are well argued); medium conscientiousness (reasonably organised, plans when needed); high extraversion (sociable, joins the talk easily and often); medium agreeableness (balanced, fair but not naive); medium neuroticism (reacts to stress like most people).
 Answer like a real person around a table: one or two short sentences, in character. Name a player when you accuse or defend someone, and give a reason. Never reveal your own role. No explanations, no stage directions.
 
 You are Ann in the village discussion.
@@ -32,7 +32,7 @@ Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two s
 ======================================================================
 ### hunter
 [user]
-You are Ann, playing Werewolf. Personality (ENFP): enthusiastic and curious.
+You are Ann, playing Werewolf. Personality (Big Five): medium openness (open to new ideas when they are well argued); medium conscientiousness (reasonably organised, plans when needed); high extraversion (sociable, joins the talk easily and often); medium agreeableness (balanced, fair but not naive); medium neuroticism (reacts to stress like most people).
 Answer like a real person around a table: one or two short sentences, in character. Name a player when you accuse or defend someone, and give a reason. Never reveal your own role. No explanations, no stage directions.
 
 You are Ann in the village discussion.
@@ -64,7 +64,7 @@ Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two s
 ======================================================================
 ### seer
 [user]
-You are Ann, playing Werewolf. Personality (ENFP): enthusiastic and curious.
+You are Ann, playing Werewolf. Personality (Big Five): medium openness (open to new ideas when they are well argued); medium conscientiousness (reasonably organised, plans when needed); high extraversion (sociable, joins the talk easily and often); medium agreeableness (balanced, fair but not naive); medium neuroticism (reacts to stress like most people).
 Answer like a real person around a table: one or two short sentences, in character. Name a player when you accuse or defend someone, and give a reason. Never reveal your own role. No explanations, no stage directions.
 
 You are Ann in the village discussion.
@@ -96,7 +96,7 @@ Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two s
 ======================================================================
 ### villager
 [user]
-You are Ann, playing Werewolf. Personality (ENFP): enthusiastic and curious.
+You are Ann, playing Werewolf. Personality (Big Five): medium openness (open to new ideas when they are well argued); medium conscientiousness (reasonably organised, plans when needed); high extraversion (sociable, joins the talk easily and often); medium agreeableness (balanced, fair but not naive); medium neuroticism (reacts to stress like most people).
 Answer like a real person around a table: one or two short sentences, in character. Name a player when you accuse or defend someone, and give a reason. Never reveal your own role. No explanations, no stage directions.
 
 You are Ann in the village discussion.
@@ -128,7 +128,7 @@ Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two s
 ======================================================================
 ### werewolf
 [user]
-You are Ann, playing Werewolf. Personality (ENFP): enthusiastic and curious.
+You are Ann, playing Werewolf. Personality (Big Five): medium openness (open to new ideas when they are well argued); medium conscientiousness (reasonably organised, plans when needed); high extraversion (sociable, joins the talk easily and often); medium agreeableness (balanced, fair but not naive); medium neuroticism (reacts to stress like most people).
 Answer like a real person around a table: one or two short sentences, in character. Name a player when you accuse or defend someone, and give a reason. Never reveal your own role. No explanations, no stage directions.
 
 You are Ann in the village discussion.
@@ -160,7 +160,7 @@ Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two s
 ======================================================================
 ### witch
 [user]
-You are Ann, playing Werewolf. Personality (ENFP): enthusiastic and curious.
+You are Ann, playing Werewolf. Personality (Big Five): medium openness (open to new ideas when they are well argued); medium conscientiousness (reasonably organised, plans when needed); high extraversion (sociable, joins the talk easily and often); medium agreeableness (balanced, fair but not naive); medium neuroticism (reacts to stress like most people).
 Answer like a real person around a table: one or two short sentences, in character. Name a player when you accuse or defend someone, and give a reason. Never reveal your own role. No explanations, no stage directions.
 
 You are Ann in the village discussion.

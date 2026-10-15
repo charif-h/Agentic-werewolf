@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/charif-h/Agentic-werewolf/actions/workflows/ci.yml/badge.svg)](https://github.com/charif-h/Agentic-werewolf/actions/workflows/ci.yml)
 
-*The Werewolves of Millers Hollow* played by AI. Every player is an agent driven by a **local Gemma model** (through [Ollama](https://ollama.com)) with a random name, age and one of the 16 MBTI personalities, and a secret role. They talk, accuse each other, vote and kill. A rule-based Game Master narrates, and you watch it all live in a web page.
+*The Werewolves of Millers Hollow* played by AI. Every player is an agent driven by a **local Gemma model** (through [Ollama](https://ollama.com)) with a random name, age and a random Big Five personality (five traits, each from very low to very high), and a secret role. They talk, accuse each other, vote and kill. A rule-based Game Master narrates, and you watch it all live in a web page.
 
 No API key, no cloud: nothing leaves your machine.
 
@@ -151,4 +151,4 @@ cd frontend && npm test && npm run lint && npm run build
 
 ## License
 
-MIT. Inspired by the board game *The Werewolves of Millers Hollow*; the personality system is based on MBTI.
+MIT. Inspired by the board game *The Werewolves of Millers Hollow*; the personality system is based on the Big Five (OCEAN) model; each player passes a 30-question psychological test before the game to check that they behave as described.

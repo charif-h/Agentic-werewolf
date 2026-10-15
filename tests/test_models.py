@@ -6,7 +6,7 @@ from backend.models.game_models import (
     Discussion,
     GameState,
     Message,
-    PersonalityType,
+    BigFive,
     PlayerProfile,
     Sex,
 )
@@ -15,7 +15,7 @@ from backend.models.game_models import (
 def test_player_profile():
     player = PlayerProfile(
         id="test_1", name="Test Player", sex=Sex.MALE, age=25,
-        personality=PersonalityType.INTJ,
+        personality=BigFive(extraversion=2),
     )
     assert player.name == "Test Player"
     assert player.get_personality_description()
