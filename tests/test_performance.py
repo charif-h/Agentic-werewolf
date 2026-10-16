@@ -18,7 +18,7 @@ from backend.game.game_logic import WerewolfGame
 from backend.llm import FakeLLMClient, LLMError, Message
 from backend.llm.metrics import LLMMetrics, current_metrics, track
 from backend.llm.ollama_client import OllamaClient
-from backend.models.game_models import PersonalityType, PlayerProfile, Sex
+from backend.models.game_models import BigFive, PlayerProfile, Sex
 from backend.services.phases import advance_phase
 from backend.services.sessions import SessionManager
 
@@ -230,19 +230,19 @@ def test_a_player_who_was_just_addressed_always_speaks():
     assert talkativeness.is_addressed("Ann", "[Bob] hi\n[Cy] Ann, what do you think?")
     assert not talkativeness.is_addressed("Ann", "[Bob] Joanna is odd")          # whole words only
     assert not talkativeness.is_addressed("Ann", "[Bob] Ann?\n[Cy] a\n[Dee] b\n[Eli] c")   # too old
-    ann = player("Ann", PersonalityType.INTP)
+    ann = player("Ann", BigFive(extraversion=2))
     assert talkativeness.speak_probability(ann, "[Cy] Ann, what do you think?", True) == 1.0
 
 
 def test_extraverts_talk_more_than_introverts_and_repeat_less():
-    extravert, introvert = player("Eve", PersonalityType.ENFP), player("Ivy", PersonalityType.INTJ)
+    extravert, introvert = player("Eve", BigFive(extraversion=4)), player("Ivy", BigFive(extraversion=2))
     assert talkativeness.speak_probability(extravert, "", False) > talkativeness.speak_probability(introvert, "", False)
     assert (talkativeness.speak_probability(extravert, "", True)
             < talkativeness.speak_probability(extravert, "", False))
 
 
 def test_should_speak_follows_the_probability():
-    extravert = player("Eve", PersonalityType.ENFP)
+    extravert = player("Eve", BigFive(extraversion=4))
     rng = random.Random(1)
     spoke = sum(talkativeness.should_speak(extravert, "", False, rng) for _ in range(2000))
     assert 0.80 < spoke / 2000 < 0.90
@@ -272,6 +272,7 @@ def test_the_first_turn_of_the_day_is_never_skipped():
     llm = FakeLLMClient("Bob looks odd.")
     game = WerewolfGame(num_players=6, llm=llm)
     game.setup_game()
+    llm.calls.clear()                                        # the psychological tests are not under test
     with patch("backend.game.game_logic.should_speak", return_value=False):
         messages = game.conduct_discussion()
     assert len(messages) == 1 and len(llm.calls) == 1        # the opener spoke, then silence ended it

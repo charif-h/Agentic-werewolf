@@ -14,8 +14,8 @@ vi.mock('./services/socket.js', () => ({
 }));
 
 const PLAYERS = [
-  { id: 'p1', name: 'Ann', sex: 'female', age: 30, personality: 'INTJ', status: 'alive', role: null },
-  { id: 'p2', name: 'Bob', sex: 'male', age: 41, personality: 'ENFP', status: 'dead', role: 'werewolf' },
+  { id: 'p1', name: 'Ann', sex: 'female', age: 30, personality: { openness: 'high', conscientiousness: 'high', extraversion: 'low', agreeableness: 'medium', neuroticism: 'very low' }, status: 'alive', role: null },
+  { id: 'p2', name: 'Bob', sex: 'male', age: 41, personality: { openness: 'very high', conscientiousness: 'low', extraversion: 'high', agreeableness: 'high', neuroticism: 'medium' }, status: 'dead', role: 'werewolf' },
 ];
 
 let serverGame;

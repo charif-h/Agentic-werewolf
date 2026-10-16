@@ -12,25 +12,6 @@ says exactly what to answer.
 import re
 from typing import List, Optional
 
-PERSONALITY_BEHAVIOR = {
-    "ENFP": "enthusiastic and curious",
-    "ENFJ": "empathetic and diplomatic",
-    "ENTP": "witty and analytical",
-    "ENTJ": "direct and strategic",
-    "ESFP": "friendly and spontaneous",
-    "ESFJ": "caring and cooperative",
-    "ESTP": "practical and observant",
-    "ESTJ": "organized and decisive",
-    "INFP": "thoughtful and idealistic",
-    "INFJ": "insightful and reserved",
-    "INTP": "logical and skeptical",
-    "INTJ": "independent and methodical",
-    "ISFP": "gentle and cautious",
-    "ISFJ": "supportive and dutiful",
-    "ISTP": "calm and pragmatic",
-    "ISTJ": "reliable and careful",
-}
-
 NO_COMMENT = "no comment"
 
 DISCUSSION_ANSWER_FORMAT = (
@@ -46,6 +27,8 @@ DIARY_ANSWER_FORMAT = (
     '"reason": "<one short sentence>", "guess": "werewolf" or "villager" or "unsure", '
     '"confidence": "low" or "medium" or "high"}]}. Straight quotes only.')
 
+PSYTEST_SCALE = "1 = strongly disagree, 2 = disagree, 3 = neutral, 4 = agree, 5 = strongly agree"
+
 ROLE_WORDS = ("werewolf", "werewolves", "villager", "villagers", "seer", "witch", "hunter", "guard")
 
 # Examples of short in-character replies (shown to the model in the discussion prompt)
@@ -54,11 +37,6 @@ DISCUSSION_EXAMPLES = (
     '- "I trust Bob. He stayed with us all night."\n'
     '- "Something is off about Eli, he has not said a word."'
 )
-
-
-def personality_behavior(personality: str) -> str:
-    """Short description of how a personality type behaves"""
-    return PERSONALITY_BEHAVIOR.get(personality, "neutral")
 
 
 def diary_notes(entry: Optional[dict]) -> List[str]:
@@ -77,14 +55,13 @@ def knowledge_block(knowledge: Optional[List[str]]) -> str:
     return "\nWHAT YOU KNOW (secret):\n" + "\n".join(f"- {fact}" for fact in knowledge) + "\n"
 
 
-def player_system_prompt(name: str, age: int, sex: str, personality: str,
-                         personality_description: str,
+def player_system_prompt(name: str, age: int, sex: str, personality_description: str,
                          role_description: Optional[str] = None,
                          knowledge: Optional[List[str]] = None) -> str:
     """Persona prompt used for night actions and other general actions"""
     lines = [
         f"You are {name}, a {age}-year-old {sex}, playing The Werewolves of Millers Hollow.",
-        f"Personality ({personality}): {personality_description}",
+        f"Your personality (Big Five), show it in how you speak and decide:\n{personality_description}",
     ]
     if role_description:
         lines.append(f"Your role: {role_description}")
@@ -94,10 +71,9 @@ def player_system_prompt(name: str, age: int, sex: str, personality: str,
     return prompt + "\nStay in character. Never reveal your own role."
 
 
-def short_reply_system_prompt(name: str, personality: str) -> str:
+def short_reply_system_prompt(name: str, personality_summary: str) -> str:
     """Compact persona prompt used for discussion and voting"""
-    return (f"You are {name}, playing Werewolf. Personality ({personality}): "
-            f"{personality_behavior(personality)}.\n"
+    return (f"You are {name}, playing Werewolf. Personality (Big Five): {personality_summary}.\n"
             "Answer like a real person around a table: one or two short sentences, in character. "
             "Name a player when you accuse or defend someone, and give a reason. "
             "Never reveal your own role. No explanations, no stage directions.")
@@ -189,14 +165,14 @@ def hunter_prompt(instruction: str, targets: List[str]) -> str:
     return f"{instruction} from these players: {', '.join(targets)}. {TARGET_ANSWER_FORMAT}"
 
 
-def diary_prompt(name: str, role: str, personality: str, step: str, events: str,
+def diary_prompt(name: str, role: str, personality_summary: str, step: str, events: str,
                  others: List[str], previous: Optional[str] = None,
                  knowledge: Optional[List[str]] = None, vote: Optional[str] = None) -> str:
     """Ask a player to write their private diary entry for the step that just ended"""
     voted = f"\nYou voted to eliminate {vote}, so you suspect {vote}.\n" if vote else ""
     before = f"\nYour last diary entry said: {previous}\n" if previous else ""
     return f"""You are {name}, writing your private diary. Nobody else reads it, so be honest about what you think.
-Secret: you are a {role}. Your personality ({personality}): {personality_behavior(personality)}. Write the way you think.
+Secret: you are a {role}. Your personality (Big Five): {personality_summary}. Write the way you think.
 {knowledge_block(knowledge)}{before}{voted}
 What happened during {step}:
 {events if events.strip() else "Nothing notable."}
@@ -206,6 +182,18 @@ For each one give a short reason that refers to what they said or did, then your
 "werewolf" = you suspect them, "villager" = you trust them, "unsure" = you cannot tell; and how sure you are (low, medium or high).
 The conclusion MUST agree with the reason: a reason that doubts someone means "werewolf", a reason that trusts someone means "villager".
 Answer in JSON: {DIARY_ANSWER_FORMAT}"""
+
+
+def psytest_prompt(name: str, statements: List[str]) -> str:
+    """Ask a player to rate statements about themselves (the psychological test)"""
+    numbered = "\n".join(f"{i}. {text}" for i, text in enumerate(statements, 1))
+    return f"""{name}, answer this questionnaire as the person you are: as you generally are, not as you would like to be.
+Rate how well each statement describes you: {PSYTEST_SCALE}.
+
+{numbered}
+
+Answer in JSON, one entry per statement, in order. Write the statement, then your rating from 1 to 5:
+{{"answers": [{{"statement": "<the statement>", "rating": <1-5>}}, ...]}}"""
 
 
 def leaks_own_role(text: str, role: str) -> bool:

@@ -57,6 +57,25 @@ def diary_schema(names: Iterable[str]) -> Dict[str, Any]:
     }
 
 
+def psytest_schema(count: int) -> Dict[str, Any]:
+    """
+    `{"answers": [{"statement": "...", "rating": <1-5>}, ...]}` with exactly `count` answers
+
+    The player writes each statement before its rating, so a rating cannot slip onto
+    another statement.
+    """
+    item = {
+        "type": "object",
+        "properties": {"statement": {"type": "string"}, "rating": {"type": "integer", "enum": [1, 2, 3, 4, 5]}},
+        "required": ["statement", "rating"],
+    }
+    return {
+        "type": "object",
+        "properties": {"answers": {"type": "array", "minItems": count, "maxItems": count, "items": item}},
+        "required": ["answers"],
+    }
+
+
 def witch_schema(poison_targets: Iterable[str]) -> Dict[str, Any]:
     """`{"save": bool, "poison": <a name or "none">}`"""
     return {
@@ -156,3 +175,15 @@ def parse_diary(text: Optional[str], names: Iterable[str]) -> Optional[Dict[str,
     if not opinions:
         return None
     return {"summary": data["summary"].strip(), "opinions": opinions}
+
+
+def parse_psytest(text: Optional[str], count: int) -> Optional[list]:
+    """The `count` ratings (1-5) of a psychological test, in order, or None if the answer is not valid"""
+    data = parse_json(text)
+    answers = data.get("answers") if data else None
+    if not isinstance(answers, list) or len(answers) != count:
+        return None
+    ratings = [a.get("rating") if isinstance(a, dict) else None for a in answers]
+    if not all(isinstance(r, int) and not isinstance(r, bool) and 1 <= r <= 5 for r in ratings):
+        return None
+    return ratings

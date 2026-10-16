@@ -2,7 +2,7 @@
 import pytest
 
 from backend.models.game_models import (
-    GameState, PersonalityType, PlayerProfile, PlayerStatus, Role, Sex,
+    GameState, BigFive, PlayerProfile, PlayerStatus, Role, Sex,
 )
 from backend.roles import (
     VILLAGERS, WEREWOLVES, RoleHandler, all_handlers, get_handler, night_handlers,
@@ -13,7 +13,7 @@ from backend.roles import registry
 def make_state(roles):
     return GameState(players=[
         PlayerProfile(id=f"p{i}", name=f"P{i}", sex=Sex.MALE, age=30,
-                      personality=PersonalityType.INTJ, role=role)
+                      personality=BigFive(extraversion=2), role=role)
         for i, role in enumerate(roles)
     ])
 

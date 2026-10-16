@@ -7,14 +7,14 @@ from backend.agents.player_agent import PlayerAgent
 from backend.llm import FakeLLMClient, LLMError
 from backend.llm import schemas
 from backend.llm.fake import fit_to_schema
-from backend.models.game_models import PersonalityType, PlayerProfile, Role, Sex
+from backend.models.game_models import BigFive, PlayerProfile, Role, Sex
 
 NAMES = ["Bob", "Cy", "Dee"]
 
 
 def make_agent(role, responses, wrap_json=True):
     profile = PlayerProfile(id="p", name="Ann", sex=Sex.FEMALE, age=30,
-                            personality=PersonalityType.INTJ, role=role)
+                            personality=BigFive(extraversion=2), role=role)
     return PlayerAgent(profile, FakeLLMClient(responses, wrap_json=wrap_json))
 
 

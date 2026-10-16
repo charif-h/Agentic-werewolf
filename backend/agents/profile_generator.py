@@ -2,7 +2,8 @@
 Player profile generator with random attributes
 """
 import random
-from backend.models.game_models import PlayerProfile, PersonalityType, Sex
+from backend.models.game_models import PlayerProfile, Sex
+from backend.models.personality import BigFive
 
 
 # Lists of names for variety
@@ -28,7 +29,7 @@ FEMALE_NAMES = [
 
 def generate_player_profile(player_id: str, used_names: set) -> PlayerProfile:
     """
-    Generate a random player profile with name, sex, age, and personality
+    Generate a random player profile with name, sex, age, and Big Five personality
     
     Args:
         player_id: Unique identifier for the player
@@ -66,8 +67,8 @@ def generate_player_profile(player_id: str, used_names: set) -> PlayerProfile:
     # Generate random age between 18 and 80
     age = random.randint(18, 80)
     
-    # Randomly assign one of the 16 personality types
-    personality = random.choice(list(PersonalityType))
+    # Random level (1-5) for each of the Big Five traits
+    personality = BigFive.random()
     
     return PlayerProfile(
         id=player_id,

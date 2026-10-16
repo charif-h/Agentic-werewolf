@@ -21,7 +21,7 @@ from backend.game.game_master import GameMaster
 from backend.game.targets import parse_witch_answer, pick_target
 from backend.game.talkativeness import is_repetition, should_speak
 from backend.llm import LLMClient
-from backend.llm.metrics import LLMMetrics
+from backend.llm.metrics import LLMMetrics, track
 from backend.llm.factory import create_llm_client
 
 
@@ -75,6 +75,8 @@ class WerewolfGame:
         for player in players:
             self.player_agents[player.id] = PlayerAgent(player, self.llm)
 
+        self._run_psytests()
+
         # Werewolves know who their teammates are
         wolves = [p for p in players if get_handler(p.role).team == WEREWOLVES]
         for wolf in wolves:
@@ -91,6 +93,25 @@ class WerewolfGame:
         self.state.game_log.append(f"[GAME MASTER] {opening}")
 
         return self.state
+
+    def _run_psytests(self) -> None:
+        """
+        Make every player pass the Big Five psychological test (see `backend.agents.psytest`).
+        A player who does not behave as described is flagged in `persona_check`; nothing else
+        changes, and a failing model call only leaves the test not completed.
+        """
+        if not get_settings().psytest_enabled:
+            return
+        with track(self.metrics):
+            for agent in self.player_agents.values():
+                player = agent.profile
+                try:
+                    check = agent.take_psytest()
+                except Exception as e:
+                    logger.warning("Psychological test failed for %s: %s", player.name, e)
+                    continue
+                if check.flagged:
+                    logger.info("%s does not behave as described on: %s", player.name, ", ".join(check.flagged))
 
     def start_night(self) -> str:
         """

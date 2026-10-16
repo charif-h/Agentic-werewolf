@@ -8,10 +8,10 @@ from backend.config import Settings
 from backend.game import talkativeness
 from backend.game.game_logic import WerewolfGame
 from backend.llm import FakeLLMClient
-from backend.models.game_models import PersonalityType, PlayerProfile, Sex
+from backend.models.game_models import BigFive, PlayerProfile, Sex
 
 
-def player(name="Eve", personality=PersonalityType.INTJ):
+def player(name="Eve", personality=BigFive(extraversion=2)):
     return PlayerProfile(id=name, name=name, sex=Sex.FEMALE, age=30, personality=personality)
 
 
@@ -29,7 +29,7 @@ def test_a_long_silence_raises_the_chance_to_speak():
 
 
 def test_the_boost_never_forces_a_player_to_speak():
-    extravert = player(personality=PersonalityType.ENFP)
+    extravert = player(personality=BigFive(extraversion=4))
     assert talkativeness.speak_probability(extravert, "", False, messages_since_spoke=99) == talkativeness.MAX_CHANCE < 1
 
 

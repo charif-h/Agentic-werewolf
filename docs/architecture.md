@@ -39,14 +39,16 @@ Dependencies point downwards only: `engine` and `roles` import nothing from `age
 | `services/phases.py` | the **phase state machine**: a table from the current phase to the function that plays it (`advance_phase`) |
 | `game/game_logic.py` | `WerewolfGame`, the **orchestrator**: asks the agents for decisions, hands them to the engine, writes the log, runs the discussion, emits live events |
 | `game/game_master.py` | the Game Master: template announcements and the rule that ends the discussion. **No LLM** |
-| `game/talkativeness.py` | decides, without any model call, whether a player takes their turn (personality, being named, long silence) and whether a line only repeats what was just said |
+| `game/talkativeness.py` | decides, without any model call, whether a player takes their turn (extraversion level, being named, long silence) and whether a line only repeats what was just said |
 | `game/targets.py` | turns free text into valid player names (whole-word, case-insensitive) |
 | `engine/rules.py` | **the rules**: role distribution, who may be targeted, night resolution (kill, guard, seer, witch), hunter's shot, vote tally, win condition. Pure functions over `GameState`; randomness is injectable |
 | `roles/` | one module per role (team, descriptions, strategies, night action) and a registry. **Adding a role means adding one file** |
 | `agents/player_agent.py` | `PlayerAgent`: one per player. Builds the prompts, asks for **JSON** answers, keeps a short memory and the player's secret knowledge (the seer's findings, the werewolves' teammates), falls back safely when an answer is unusable |
+| `agents/psytest.py` | the **psychological test**: 30 Big Five statements each player answers in character before the game, one model call per trait (six statements, each rating written next to its statement); the scored levels are compared with the assigned ones and a differing trait is **flagged** (`PlayerProfile.persona_check`), nothing else changes |
 | `prompts/` | every sentence sent to the model, as plain functions |
 | `llm/` | the model side: `LLMClient` (the interface), `OllamaClient`, `schemas` (JSON schemas and their parsers), `formatting` (Gemma chat format), `tokens` (context budget), `metrics`, `health`, and `FakeLLMClient` for tests |
 | `models/game_models.py` | the data: `GameState`, `PlayerProfile`, `Role`, `GamePhase`, ... |
+| `models/personality.py` | the **Big Five** personality: five traits at five levels (very low to very high), their behaviour sentences for the prompts, and the result of the psychological test |
 
 ## A game, phase by phase
 

@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     discussion_max_rounds: int = Field(5, ge=1)
     discussion_gate: bool = True    # skip the turns of players with nothing pressing to say (saves model calls)
     diary_enabled: bool = True      # each player writes a diary entry after every night and day (one model call each)
+    psytest_enabled: bool = True    # before the game each player answers a Big Five questionnaire (five model calls each, one per trait); a player who does not behave as described is flagged
     memory_messages: int = Field(4, ge=0)          # past messages kept per player
     discussion_context_messages: int = Field(10, ge=0)  # discussion lines shown in a prompt
     conversation_token_budget: int = Field(1200, ge=100)  # most tokens of conversation in one prompt

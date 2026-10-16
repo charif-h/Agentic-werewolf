@@ -6,7 +6,7 @@ import pytest
 
 from backend.engine import rules
 from backend.models.game_models import (
-    GamePhase, GameState, PersonalityType, PlayerProfile, PlayerStatus, Role, Sex,
+    GamePhase, GameState, BigFive, PlayerProfile, PlayerStatus, Role, Sex,
 )
 
 
@@ -14,7 +14,7 @@ def make_state(roles):
     """GameState with players P0..Pn holding the given roles"""
     players = [
         PlayerProfile(id=f"p{i}", name=f"P{i}", sex=Sex.MALE, age=30,
-                      personality=PersonalityType.INTJ, role=role)
+                      personality=BigFive(extraversion=2), role=role)
         for i, role in enumerate(roles)
     ]
     return GameState(players=players)

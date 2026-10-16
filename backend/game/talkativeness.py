@@ -3,7 +3,7 @@ Who talks in the discussion?
 
 Asking every player to speak in every round costs one model call each, and most
 of those turns produce nothing new. This module decides, without any model
-call, whether a player takes their turn: talkative personalities speak more
+call, whether a player takes their turn: players with high extraversion speak more
 often, a player who was just addressed always answers, and a player who has
 been silent for a long time speaks up. `is_repetition` spots a line that only
 repeats what was just said.
@@ -20,8 +20,8 @@ from typing import Iterable, Optional
 
 from backend.models.game_models import PlayerProfile
 
-EXTRAVERT_CHANCE = 0.85      # personality types starting with E
-INTROVERT_CHANCE = 0.55      # personality types starting with I
+# chance to take a turn, by level of extraversion (1 = very low ... 5 = very high)
+SPEAK_CHANCE = {1: 0.45, 2: 0.55, 3: 0.70, 4: 0.85, 5: 0.92}
 RECENTLY_SPOKE_FACTOR = 0.7  # someone who spoke last round is less eager to speak again
 RECENT_LINES = 3             # how many of the latest lines count as "just addressed"
 SILENCE_BOOST = ((8, 0.20), (4, 0.10))  # (messages without speaking, added chance), longest first
@@ -54,7 +54,7 @@ def speak_probability(profile: PlayerProfile, conversation: str, spoke_last_roun
     """
     if is_addressed(profile.name, conversation):
         return 1.0
-    chance = EXTRAVERT_CHANCE if profile.personality.value.startswith("E") else INTROVERT_CHANCE
+    chance = SPEAK_CHANCE[profile.personality.extraversion]
     if spoke_last_round:
         chance *= RECENTLY_SPOKE_FACTOR
     if messages_since_spoke is not None:

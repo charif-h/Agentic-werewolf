@@ -17,7 +17,8 @@ class LLMMetrics:
             self._data = {"calls": 0, "errors": 0, "prompt_tokens": 0, "completion_tokens": 0,
                           "seconds": 0.0, "generation_seconds": 0.0, "load_seconds": 0.0,
                           "wait_seconds": 0.0, "skipped_turns": 0,
-                          "invalid_answers": 0, "role_leaks": 0, "repeated_lines": 0}
+                          "invalid_answers": 0, "role_leaks": 0, "repeated_lines": 0,
+                          "psytests": 0, "psytest_flagged": 0}
 
     def add_call(self, seconds: float, wait_seconds: float = 0.0,
                  answer: Optional[Dict[str, Any]] = None) -> None:
@@ -55,6 +56,12 @@ class LLMMetrics:
         """Count a discussion line dropped because it only repeated what was just said"""
         with self._lock:
             self._data["repeated_lines"] += 1
+
+    def add_psytest(self, flagged: bool) -> None:
+        """Count a completed psychological test, and whether the player was flagged"""
+        with self._lock:
+            self._data["psytests"] += 1
+            self._data["psytest_flagged"] += 1 if flagged else 0
 
     def add_role_leak(self) -> None:
         """Count a discussion line in which the speaker stated their own role"""

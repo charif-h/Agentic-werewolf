@@ -47,7 +47,7 @@ const DiaryModal = ({ gameId, player, version, onClose }) => {
           <button onClick={onClose} aria-label="Close diary">✕</button>
         </div>
         <p className="diary-subtitle">
-          {player.personality} • {player.age} years
+          {player.age} years • {Object.entries(player.personality || {}).map(([t, l]) => `${t} ${l}`).join(' · ')}
         </p>
 
         {error && <p className="error" role="alert">{error}</p>}

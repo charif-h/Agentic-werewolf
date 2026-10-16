@@ -3,8 +3,32 @@ import { render, screen } from '@testing-library/react';
 import PlayerCard from './PlayerCard.jsx';
 import { NightSummary, VoteTally } from './Summaries.jsx';
 
-const ALIVE = { id: 'p1', name: 'Ann', sex: 'female', age: 30, personality: 'INTJ', status: 'alive', role: 'seer' };
+const ALIVE = { id: 'p1', name: 'Ann', sex: 'female', age: 30, personality: { openness: 'high', conscientiousness: 'high', extraversion: 'low', agreeableness: 'medium', neuroticism: 'very low' }, status: 'alive', role: 'seer' };
 const DEAD = { ...ALIVE, id: 'p2', name: 'Bob', status: 'dead', role: 'werewolf' };
+
+describe('PlayerCard personality', () => {
+  it('shows the level of each Big Five trait', () => {
+    render(<PlayerCard player={ALIVE} />);
+    expect(screen.getByLabelText('Personality').children).toHaveLength(5);
+    expect(screen.getByText(/Extraversion:/)).toHaveTextContent('Extraversion: low');
+  });
+
+  it('warns when the psychological test flagged the player', () => {
+    const personality = { openness: 'medium', conscientiousness: 'medium', extraversion: 'very low', agreeableness: 'medium', neuroticism: 'low' };
+    const check = {
+      completed: true, confirmed: false, flagged: ['extraversion', 'agreeableness', 'neuroticism'],
+      measured: { openness: 3, conscientiousness: 3, extraversion: 3, agreeableness: 2, neuroticism: 3 }, score: -6,
+    };
+    render(<PlayerCard player={{ ...ALIVE, personality, persona_check: check }} />);
+    expect(screen.getByText(/Does not behave as described: extraversion \+2, agreeableness -1, neuroticism \+1 \(score -6\)/)).toBeInTheDocument();
+  });
+
+  it('shows no warning for a confirmed player', () => {
+    const check = { completed: true, confirmed: true, flagged: [], scores: {}, measured: {} };
+    render(<PlayerCard player={{ ...ALIVE, persona_check: check }} />);
+    expect(screen.queryByText(/Does not behave/)).not.toBeInTheDocument();
+  });
+});
 
 describe('PlayerCard roles', () => {
   it('hides the role of a living player by default, even if the server sent it', () => {
