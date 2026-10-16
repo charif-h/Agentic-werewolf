@@ -14,9 +14,13 @@ describe('PlayerCard personality', () => {
   });
 
   it('warns when the psychological test flagged the player', () => {
-    const check = { completed: true, confirmed: false, flagged: ['extraversion'], scores: {}, measured: {} };
-    render(<PlayerCard player={{ ...ALIVE, persona_check: check }} />);
-    expect(screen.getByText(/Does not behave as described: extraversion/)).toBeInTheDocument();
+    const personality = { openness: 'medium', conscientiousness: 'medium', extraversion: 'very low', agreeableness: 'medium', neuroticism: 'low' };
+    const check = {
+      completed: true, confirmed: false, flagged: ['extraversion', 'agreeableness', 'neuroticism'],
+      measured: { openness: 3, conscientiousness: 3, extraversion: 3, agreeableness: 2, neuroticism: 3 }, score: -6,
+    };
+    render(<PlayerCard player={{ ...ALIVE, personality, persona_check: check }} />);
+    expect(screen.getByText(/Does not behave as described: extraversion \+2, agreeableness -1, neuroticism \+1 \(score -6\)/)).toBeInTheDocument();
   });
 
   it('shows no warning for a confirmed player', () => {

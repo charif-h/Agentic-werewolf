@@ -13,7 +13,7 @@ from backend.models.game_models import PlayerProfile
 from backend.llm import ASSISTANT, SYSTEM, USER, LLMClient, Message, fit_text
 from backend.llm import schemas
 from backend.agents import psytest
-from backend.models.personality import PersonaCheck
+from backend.models.personality import TRAITS, PersonaCheck
 from backend.config import get_settings
 from backend.llm.metrics import current_metrics
 from backend import prompts
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 DECISION_TOKENS = 60      # a JSON object holding a name
 DIARY_TOKENS = 600         # a summary and one opinion per other player
-PSYTEST_TOKENS = 150      # a JSON array of 30 digits
+PSYTEST_TOKENS = 400      # six statements with their ratings, as JSON
 SPEECH_TOKENS = 160       # a JSON object holding one or two sentences
 
 
@@ -244,12 +244,18 @@ class PlayerAgent:
         profile = self.profile
         system_prompt = prompts.player_system_prompt(
             profile.name, profile.age, profile.sex.value, profile.get_personality_description())
-        context = prompts.psytest_prompt(profile.name, psytest.statements())
-        answers = schemas.parse_psytest(
-            self._ask(system_prompt, context, schemas.psytest_schema(len(psytest.ITEMS)), PSYTEST_TOKENS),
-            len(psytest.ITEMS))
-        if answers is None:
-            self._note_invalid_answer()
+        answers: Optional[list] = []
+        for trait in TRAITS:                      # one call per trait: six statements are easy to keep in line
+            statements = psytest.statements_of(trait)
+            context = prompts.psytest_prompt(profile.name, statements)
+            ratings = schemas.parse_psytest(
+                self._ask(system_prompt, context, schemas.psytest_schema(len(statements)), PSYTEST_TOKENS),
+                len(statements))
+            if ratings is None:
+                self._note_invalid_answer()
+                answers = None
+                break
+            answers += ratings
         check = psytest.evaluate(answers, profile.personality)
         profile.persona_check = check
         metrics = current_metrics()

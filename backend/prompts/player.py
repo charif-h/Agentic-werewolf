@@ -192,7 +192,8 @@ Rate how well each statement describes you: {PSYTEST_SCALE}.
 
 {numbered}
 
-Answer in JSON with one number from 1 to 5 for each of the {len(statements)} statements, in order: {{"answers": [<{len(statements)} numbers>]}}"""
+Answer in JSON, one entry per statement, in order. Write the statement, then your rating from 1 to 5:
+{{"answers": [{{"statement": "<the statement>", "rating": <1-5>}}, ...]}}"""
 
 
 def leaks_own_role(text: str, role: str) -> bool:

@@ -28,6 +28,14 @@ def answers_for(levels):
     return result
 
 
+def reply_with(answers):
+    """A fake model that rates the six statements of the trait it is asked about from `answers` (30 ratings)"""
+    def respond(messages):
+        asked = [i for i, statement in enumerate(psytest.statements()) if statement in messages[-1].content]
+        return json.dumps({"answers": [{"statement": psytest.statements()[i], "rating": answers[i]} for i in asked]})
+    return respond
+
+
 def profile(personality=None, name="Ann"):
     return PlayerProfile(id=name, name=name, sex=Sex.FEMALE, age=30,
                          personality=personality or BigFive(), role=Role.VILLAGER)
@@ -65,18 +73,38 @@ def test_traits_that_differ_from_the_description_are_flagged():
     assert check.flagged == ["extraversion", "neuroticism"]
 
 
+def test_score_is_minus_the_squared_gap_of_each_trait():
+    personality = BigFive(extraversion=5, neuroticism=1)
+    check = psytest.evaluate([3] * 30, personality)               # measured level 3 everywhere
+    assert check.trait_scores == {"openness": 0, "conscientiousness": 0, "extraversion": -4,
+                                  "agreeableness": 0, "neuroticism": -4}
+    assert check.score == -8
+
+
+def test_a_player_who_answers_as_described_scores_zero():
+    personality = BigFive(openness=1, conscientiousness=2, extraversion=3, agreeableness=4, neuroticism=5)
+    check = psytest.evaluate(answers_for(personality.levels()), personality)
+    assert check.score == 0 and set(check.trait_scores.values()) == {0}
+
+
 def test_unusable_answers_leave_the_test_not_completed_and_flag_nothing():
     for bad in (None, [3] * 29, [3] * 29 + [9]):
         check = psytest.evaluate(bad, BigFive())
         assert not check.completed and not check.confirmed and check.flagged == []
+        assert check.score is None
 
 
 def test_parse_psytest():
-    assert schemas.parse_psytest(json.dumps({"answers": [3] * 30}), 30) == [3] * 30
-    assert schemas.parse_psytest(json.dumps({"answers": [3] * 29}), 30) is None
-    assert schemas.parse_psytest(json.dumps({"answers": ["3"] * 30}), 30) is None
-    assert schemas.parse_psytest(json.dumps({"answers": [True] * 30}), 30) is None
-    assert schemas.parse_psytest("not json", 30) is None
+    def given(ratings):
+        return json.dumps({"answers": [{"statement": "s", "rating": r} for r in ratings]})
+
+    assert schemas.parse_psytest(given([3, 5, 1, 2, 4, 3]), 6) == [3, 5, 1, 2, 4, 3]
+    assert schemas.parse_psytest(given([3] * 5), 6) is None
+    assert schemas.parse_psytest(given(["3"] * 6), 6) is None
+    assert schemas.parse_psytest(given([True] * 6), 6) is None
+    assert schemas.parse_psytest(given([3, 3, 3, 3, 3, 9]), 6) is None
+    assert schemas.parse_psytest(json.dumps({"answers": [3] * 6}), 6) is None       # ratings without statements
+    assert schemas.parse_psytest("not json", 6) is None
 
 
 def test_generated_players_have_a_level_for_every_trait():
@@ -94,14 +122,16 @@ def test_description_gives_one_line_per_trait_with_its_level():
 def test_agent_takes_the_test_in_character_and_the_result_is_kept_on_the_profile():
     personality = BigFive(openness=4, extraversion=2)
     levels = personality.levels()
-    llm = FakeLLMClient(json.dumps({"answers": answers_for(levels)}))
+    llm = FakeLLMClient(reply_with(answers_for(levels)))
     agent = PlayerAgent(profile(personality), llm)
     check = agent.take_psytest()
     assert check.confirmed and agent.profile.persona_check is check
+    assert len(llm.calls) == len(TRAITS)                         # one call per trait
     messages, options = llm.calls[0]
     assert "Extraversion: low" in messages[0].content            # the persona is in the system prompt
-    assert "1. I have a vivid imagination." in messages[-1].content and "30. " in messages[-1].content
-    assert options["json_schema"]["properties"]["answers"]["minItems"] == 30
+    assert "1. I have a vivid imagination." in messages[-1].content and "6. " in messages[-1].content
+    assert "7. " not in messages[-1].content and "I worry about things a lot." not in messages[-1].content
+    assert options["json_schema"]["properties"]["answers"]["minItems"] == 6
     assert "Role" not in messages[0].content and "Your role" not in messages[0].content
 
 
@@ -111,12 +141,26 @@ def test_a_model_that_cannot_answer_does_not_stop_the_player():
     assert not check.completed and agent.profile.persona_check == check
 
 
+def test_one_trait_that_cannot_be_answered_leaves_the_test_not_completed():
+    good = reply_with(answers_for(BigFive().levels()))
+    calls = []
+
+    def respond(messages):
+        calls.append(messages)
+        return "not json" if len(calls) == 3 else good(messages)
+
+    agent = PlayerAgent(profile(), FakeLLMClient(respond, wrap_json=False))
+    check = agent.take_psytest()
+    assert not check.completed and check.score is None
+    assert len(calls) == 3                                       # it stops at the first unusable answer
+
+
 def test_the_game_tests_every_player_during_setup_and_counts_the_flags():
     llm = FakeLLMClient("")                                       # neutral answers (all 3)
     game = WerewolfGame(num_players=6, llm=llm)
     game.setup_game()
     checks = [p.persona_check for p in game.state.players]
-    assert all(c is not None and c.completed for c in checks) and len(llm.calls) == 6
+    assert all(c is not None and c.completed for c in checks) and len(llm.calls) == 6 * len(TRAITS)
     stats = game.metrics.snapshot()
     assert stats["psytests"] == 6
     assert stats["psytest_flagged"] == sum(1 for c in checks if c.flagged)

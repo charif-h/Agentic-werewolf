@@ -35,7 +35,7 @@ def fit_to_schema(text: str, json_schema: Dict[str, Any]) -> str:
             {"player": name, "guess": "unsure", "confidence": "low", "reason": "Not enough to go on."}
             for name in names]})
     if "answers" in properties:
-        return json.dumps({"answers": [3] * properties["answers"].get("minItems", 0)})
+        return json.dumps({"answers": [{"statement": "", "rating": 3}] * properties["answers"].get("minItems", 0)})
     if "save" in properties:
         save = re.search(r"\b(save|heal)\b", reply, re.IGNORECASE) is not None
         poison = "none"

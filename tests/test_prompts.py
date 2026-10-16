@@ -82,7 +82,7 @@ def test_agent_sends_role_and_strategy_prompts_to_the_llm():
     agent = make_agent(Role.SEER)
     agent.discuss("[Bob] hello", ["Ann", "Bob"])
     system, user = agent.llm.last_messages
-    assert "low extraversion (quiet, prefers to listen before speaking)" in system.content
+    assert f"low extraversion ({BEHAVIOR['extraversion'][2]})" in system.content
     assert "Secret: you are a seer" in user.content
     assert agent.handler.discussion_strategy in user.content
 

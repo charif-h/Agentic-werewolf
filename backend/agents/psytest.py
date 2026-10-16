@@ -50,6 +50,11 @@ def statements() -> List[str]:
     return [text for _, text, _ in ITEMS]
 
 
+def statements_of(trait: str) -> List[str]:
+    """The six statements of one trait, in the order their ratings are expected"""
+    return [text for t, text, _ in ITEMS if t == trait]
+
+
 def score(answers: Sequence[int]) -> Dict[str, int]:
     """Sum of the six answers of each trait (6-30), reverse-scored items counting 6 minus the answer"""
     totals = {trait: 0 for trait in TRAITS}
@@ -70,5 +75,7 @@ def evaluate(answers: Optional[Sequence[int]], expected: BigFive) -> PersonaChec
     scores = score(answers)
     measured = {trait: level_from_score(total) for trait, total in scores.items()}
     assigned = expected.levels()
+    trait_scores = {trait: -(measured[trait] - assigned[trait]) ** 2 for trait in TRAITS}
     return PersonaCheck(completed=True, scores=scores, measured=measured,
-                        flagged=[trait for trait in TRAITS if measured[trait] != assigned[trait]])
+                        flagged=[trait for trait in TRAITS if measured[trait] != assigned[trait]],
+                        trait_scores=trait_scores, score=sum(trait_scores.values()))
