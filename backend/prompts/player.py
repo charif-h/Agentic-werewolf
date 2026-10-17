@@ -149,15 +149,35 @@ OPENER_INSTRUCTION = ("Open the discussion yourself. Nobody has said anything ye
                       "Do not refer to earlier talk.")
 
 
+def updates_block(name: str, new_lines: List[str], mentions_only: bool = False) -> str:
+    """
+    What changed since the player's last turn: the new lines, and a separate notice for the lines
+    that name the player ('' when there is nothing new). Placed after the conversation.
+    With `mentions_only` (the player has not spoken yet, everything is new) only the notice is given.
+    """
+    block = ""
+    if new_lines and not mentions_only:
+        block += "\nNew since your last turn:\n" + "\n".join(new_lines) + "\n"
+    named = []
+    for line in new_lines:
+        found = re.match(r"^\[([^\]]*)\]\s*(.*)$", line.strip(), re.DOTALL)
+        speaker, text = (found.group(1), found.group(2)) if found else ("", line)
+        if speaker != name and re.search(rf"(?<!\w){re.escape(name)}(?!\w)", text):
+            named.append(f'{speaker or "Someone"} talked about you: "{text}"')
+    if named:
+        block += "\n" + "\n".join(named[-2:]) + "\nAnswer them if they accuse or question you.\n"
+    return block
+
+
 def discussion_prompt(name: str, conversation: str, alive_names: List[str], role: str,
                       role_strategy: str, factors: str,
-                      knowledge: Optional[List[str]] = None, scene: str = "") -> str:
+                      knowledge: Optional[List[str]] = None, scene: str = "", updates: str = "") -> str:
     """Ask a player what to say in the discussion"""
     return f"""{scene}You are {name} in the village discussion.
 
 Conversation so far:
 {conversation if conversation.strip() else OPENER_INSTRUCTION}
-
+{updates}
 Alive players: {', '.join(alive_names)}
 
 Secret: you are a {role}. {role_strategy}
@@ -242,6 +262,26 @@ Conversation:
 Candidates: {', '.join(candidates)}
 
 Decide whom you will vote against and say why, the way your personality would. {answer}"""
+
+
+REACTION_ANSWER_FORMAT = 'Answer in JSON: {"text": "<one or two sentences, in the first person>"}.'
+
+REACTION_CAUSES = {
+    "accused": "Somebody just accused you or doubted you.",
+    "claim": "Somebody just claimed a role.",
+    "suspect_changed": "You just turned on a different player than before.",
+}
+
+
+def reaction_prompt(name: str, cause: str, new_lines: List[str], knowledge: Optional[List[str]] = None) -> str:
+    """Ask a player to note in the diary what they feel and what they will do now (a change of strategy)"""
+    return f"""You are {name}, writing a quick note in your private diary during the village discussion.
+{REACTION_CAUSES.get(cause, "Something changed in the discussion.")}
+{knowledge_block(knowledge)}
+What was just said:
+{chr(10).join(new_lines) if new_lines else "Nothing new."}
+
+Write what you felt and what you will do now, for example "I felt that John is trying to accuse me, so I will attack him" or "I feel that Sara is a werewolf, so I will ask her where she was". {REACTION_ANSWER_FORMAT}"""
 
 
 def suspect_reminder(suspect: str) -> str:

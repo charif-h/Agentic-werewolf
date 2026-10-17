@@ -92,6 +92,18 @@ def diary_schema(names: Iterable[str], wolf: bool = False) -> Dict[str, Any]:
     }
 
 
+def reaction_schema() -> Dict[str, Any]:
+    """`{"text": str}`: a short diary note about a change in the discussion"""
+    return {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
+
+
+def parse_reaction(text: Optional[str]) -> Optional[str]:
+    """The note of a reaction answer, or None when it is empty or not valid"""
+    data = parse_json(text)
+    note = data.get("text") if data else None
+    return note.strip() if isinstance(note, str) and note.strip() else None
+
+
 def psytest_schema(count: int) -> Dict[str, Any]:
     """
     `{"answers": [{"statement": "...", "rating": <1-5>}, ...]}` with exactly `count` answers

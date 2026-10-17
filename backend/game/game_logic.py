@@ -20,7 +20,7 @@ from backend.agents.profile_generator import generate_all_players
 from backend.agents.player_agent import PlayerAgent
 from backend.game.game_master import GameMaster
 from backend.game.targets import match_player_name, parse_witch_answer, pick_target
-from backend.game.talkativeness import is_repetition, should_speak
+from backend.game.talkativeness import accused_player, is_repetition, reaction_trigger, should_speak
 from backend.llm import LLMClient
 from backend.llm.metrics import LLMMetrics, track
 from backend.llm.factory import create_llm_client
@@ -49,6 +49,7 @@ class WerewolfGame:
         self._night_start = 0            # index in the game log where the current night began
         self._day_start = 0              # ... and the current day
         self._day_announcement = ""      # what the narrator said when the day began
+        self._reactions: Dict[str, int] = {}   # player name -> reaction notes written today
         # Optional callback(event_type, data) for live progress (player_spoke, vote_cast);
         # it is called from whatever thread plays the phase
         self.on_event: Optional[Callable[[str, dict], None]] = None
@@ -327,6 +328,7 @@ class WerewolfGame:
         )
         self.state.game_log.append(f"[GAME MASTER] {announcement}")
         self._day_announcement = announcement
+        self._reactions = {}
 
         return announcement
 
@@ -385,6 +387,8 @@ class WerewolfGame:
 
         spoke_last_round = set()
         last_spoke_at = {}  # player name -> index of their latest message in this discussion
+        last_accused: Dict[str, str] = {}   # player name -> the player they accused last
+        reacted_upto: Dict[str, int] = {}   # player name -> messages already looked at for a reaction
         for discussion_round in range(1, max_rounds + 1):
             round_speech_count = 0
 
@@ -404,9 +408,13 @@ class WerewolfGame:
                 # call. The first turn of the day is never skipped, so someone opens the talk.
                 opening_turn = discussion_round == 1 and index == 0
                 since_spoke = len(discussion.messages) - last_spoke_at.get(player.name, -1) - 1
+                lines = [f"[{m.sender}] {m.content}" for m in discussion.messages]
+                # What was said since this player's last turn (None before their first turn)
+                new_lines = lines[last_spoke_at[player.name] + 1:] if player.name in last_spoke_at else None
                 if (settings.discussion_gate and not opening_turn
                         and not should_speak(player, current_conversation, player.name in spoke_last_round,
-                                             messages_since_spoke=since_spoke)):
+                                             messages_since_spoke=since_spoke,
+                                             new_lines=lines if new_lines is None else new_lines)):
                     self.metrics.add_skipped_turn()
                     continue
                 try:
@@ -414,7 +422,7 @@ class WerewolfGame:
 
                     # Give each player the updated conversation to consider responding
                     comment = agent.discuss(current_conversation, alive_names, self._scene(len(discussion.messages)),
-                                          f"Day {self.state.day_number}")
+                                          f"Day {self.state.day_number}", new_lines)
 
                     # Filter out "no comment" responses
                     spoken = bool(comment and comment.strip() and comment.strip().lower() != "no comment")
@@ -445,6 +453,11 @@ class WerewolfGame:
 
                         logger.info("Round %s: %s spoke", discussion_round, player.name)
 
+                    # A change of strategy (accused, role claim, new suspect) goes to the diary
+                    self._maybe_react(player, agent, lines[reacted_upto.get(player.name, 0):],
+                                      comment if spoken else None, last_accused, alive_names)
+                    reacted_upto[player.name] = len(discussion.messages)
+
                 except Exception as e:
                     # A player whose model call fails stays silent this round
                     logger.warning("Error with player %s: %s", player.name, e)
@@ -465,6 +478,29 @@ class WerewolfGame:
             self.state.discussions.append(discussion)
 
         return messages
+
+    def _maybe_react(self, player: PlayerProfile, agent: PlayerAgent, new_lines: List[str],
+                     own_line: Optional[str], last_accused: Dict[str, str], alive_names: List[str]) -> None:
+        """
+        After a turn, decide with a cheap heuristic (no model call) whether the player's strategy
+        changed: accused, somebody claimed a role, or they turned on another player. If so, and
+        the player wrote fewer than `reactions_per_day` notes today, one model call writes a
+        `reaction` entry in their diary.
+        """
+        accused = accused_player(own_line, alive_names, player.name) if own_line else None
+        previous = last_accused.get(player.name)
+        if accused:
+            last_accused[player.name] = accused
+        limit = get_settings().reactions_per_day
+        if not get_settings().diary_enabled or self._reactions.get(player.name, 0) >= limit:
+            return
+        cause = reaction_trigger(player.name, new_lines, own_line, previous, alive_names)
+        if cause is None:
+            return
+        shown = new_lines + ([f"[{player.name}] {own_line}"] if own_line else [])
+        entry = agent.write_reaction(f"Day {self.state.day_number}", cause, shown)
+        if entry:
+            self._reactions[player.name] = self._reactions.get(player.name, 0) + 1
 
     def conduct_vote(self) -> Tuple[Optional[PlayerProfile], Dict[str, int]]:
         """

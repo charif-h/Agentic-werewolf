@@ -17,7 +17,7 @@ class LLMMetrics:
             self._data = {"calls": 0, "errors": 0, "prompt_tokens": 0, "completion_tokens": 0,
                           "seconds": 0.0, "generation_seconds": 0.0, "load_seconds": 0.0,
                           "wait_seconds": 0.0, "skipped_turns": 0,
-                          "invalid_answers": 0, "role_leaks": 0, "repeated_lines": 0, "opening_backreference": 0, "missing_reasons": 0, "vote_plans": 0, "diary_vote_mismatch": 0, "unexplained_changes": 0, "wolf_voted_mate_unintended": 0, "wolf_sacrificed_mate": 0,
+                          "invalid_answers": 0, "role_leaks": 0, "repeated_lines": 0, "opening_backreference": 0, "missing_reasons": 0, "reaction_entries": 0, "vote_plans": 0, "diary_vote_mismatch": 0, "unexplained_changes": 0, "wolf_voted_mate_unintended": 0, "wolf_sacrificed_mate": 0,
                           "psytests": 0, "psytest_flagged": 0}
 
     def add_call(self, seconds: float, wait_seconds: float = 0.0,
@@ -81,6 +81,11 @@ class LLMMetrics:
         """Count a vote that still differed from the plan after asking again, without an explanation"""
         with self._lock:
             self._data["unexplained_changes"] += 1
+
+    def add_reaction_entry(self) -> None:
+        """Count a reaction note written in a diary during the discussion (one model call)"""
+        with self._lock:
+            self._data["reaction_entries"] += 1
 
     def add_missing_reason(self) -> None:
         """Count a decision that came without a reason, even after asking again"""

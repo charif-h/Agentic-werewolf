@@ -47,6 +47,8 @@ def fit_to_schema(text: str, json_schema: Dict[str, Any]) -> str:
         return json.dumps({"summary": reply or "Nothing clear yet.", "opinions": [
             {"player": name, "guess": "unsure", "confidence": "low", "reason": "Not enough to go on."}
             for name in names]})
+    if list(properties) == ["text"]:
+        return json.dumps({"text": reply or "I take note of it."})
     if "answers" in properties:
         return json.dumps({"answers": [{"statement": "", "rating": 3}] * properties["answers"].get("minItems", 0)})
     if "save" in properties:

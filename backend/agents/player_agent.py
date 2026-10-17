@@ -14,7 +14,7 @@ from backend.llm import ASSISTANT, SYSTEM, USER, LLMClient, Message, fit_text
 from backend.llm.tokens import OMISSION_NOTICE, fit_lines
 from backend.llm import schemas
 from backend.agents import psytest
-from backend.models.diary import DAY_SUMMARY, HEADER_KINDS, DECISION, NIGHT_SUMMARY, PACK, PLAN, ROLE_CARD, make_entry
+from backend.models.diary import DAY_SUMMARY, HEADER_KINDS, DECISION, NIGHT_SUMMARY, PACK, PLAN, REACTION, ROLE_CARD, make_entry
 from backend.models.personality import TRAITS, PersonaCheck
 from backend.config import get_settings
 from backend.llm.metrics import current_metrics
@@ -385,7 +385,27 @@ class PlayerAgent:
             metrics.add_psytest(bool(check.flagged))
         return check
 
-    def discuss(self, conversation_history: str, alive_players: list[str], scene: str = "", step: str = "Day") -> str:
+    def write_reaction(self, step: str, cause: str, new_lines: List[str]) -> Optional[Dict[str, Any]]:
+        """
+        Note in the diary, in a sentence or two, how the player reacts to a change in the discussion
+        (accused, a role claim, a new suspect) and what they will do. One model call, none when the
+        diary is off; the note is None if the model gave nothing usable.
+        """
+        if not get_settings().diary_enabled:
+            return None
+        context = prompts.reaction_prompt(self.profile.name, cause, new_lines, self._knowledge_with_notes())
+        system_prompt = prompts.short_reply_system_prompt(self.profile.name, self.profile.personality.summary())
+        note = schemas.parse_reaction(self._ask(system_prompt, context, schemas.reaction_schema(), SPEECH_TOKENS))
+        if note is None:
+            self._note_invalid_answer()
+            return None
+        metrics = current_metrics()
+        if metrics is not None:
+            metrics.add_reaction_entry()
+        return self._add_entry(step, REACTION, note, {"cause": cause})
+
+    def discuss(self, conversation_history: str, alive_players: list[str], scene: str = "", step: str = "Day",
+                new_lines: Optional[List[str]] = None) -> str:
         """
         Generate a strategic comment based on conversation history and role
 
@@ -394,6 +414,7 @@ class PlayerAgent:
             alive_players: List of alive player names
             scene: Where the village is (see `prompts.scene_block`), put on top of the prompt
             step: Diary step ("Day 2") a line that names a player is justified under
+            new_lines: What was said since this player's last turn (None before their first turn)
 
         Returns:
             What the player says, or "no comment" if they stay silent
@@ -404,6 +425,10 @@ class PlayerAgent:
             self.handler.discussion_strategy,
             self._should_respond_to_conversation(conversation_history),
             self._knowledge_with_notes(), scene,
+            prompts.updates_block(self.profile.name, new_lines, mentions_only=False) if new_lines is not None else
+            prompts.updates_block(self.profile.name,
+                                  [line for line in conversation_history.split("\n") if line.strip()][-6:],
+                                  mentions_only=True),
         )
 
         # The first message of a day starts without the player's earlier answers: they feed

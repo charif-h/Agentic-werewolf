@@ -59,6 +59,9 @@ Conversation so far:
 [Cy] Hal was killed. Ann, you were awake last night.
 [Dee] Eli has been very quiet since the start.
 
+Cy talked about you: "Hal was killed. Ann, you were awake last night."
+Answer them if they accuse or question you.
+
 Alive players: Ann, Bob, Cy, Dee, Eli
 
 Secret: you are a seer. You can see true identities at night.
