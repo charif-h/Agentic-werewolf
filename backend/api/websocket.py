@@ -13,7 +13,7 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
     """
     WebSocket endpoint for real-time updates of one game
 
-    Server events: `phase_change`, `player_spoke`, `vote_cast`, `game_ended`, `error`.
+    Server events: `phase_change`, `player_spoke`, `vote_cast`, `diary_entry` (spectator mode only), `game_ended`, `error`.
     Messages sent by the client are echoed back.
     """
     if state.sessions.find(game_id) is None:

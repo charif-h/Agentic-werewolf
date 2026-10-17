@@ -19,8 +19,8 @@ from backend.models.game_models import (
 from backend.agents.profile_generator import generate_all_players
 from backend.agents.player_agent import PlayerAgent
 from backend.game.game_master import GameMaster
-from backend.game.targets import parse_witch_answer, pick_target
-from backend.game.talkativeness import is_repetition, should_speak
+from backend.game.targets import match_player_name, parse_witch_answer, pick_target
+from backend.game.talkativeness import accused_player, is_repetition, reaction_trigger, should_speak
 from backend.llm import LLMClient
 from backend.llm.metrics import LLMMetrics, track
 from backend.llm.factory import create_llm_client
@@ -49,6 +49,7 @@ class WerewolfGame:
         self._night_start = 0            # index in the game log where the current night began
         self._day_start = 0              # ... and the current day
         self._day_announcement = ""      # what the narrator said when the day began
+        self._reactions: Dict[str, int] = {}   # player name -> reaction notes written today
         # Optional callback(event_type, data) for live progress (player_spoke, vote_cast);
         # it is called from whatever thread plays the phase
         self.on_event: Optional[Callable[[str, dict], None]] = None
@@ -75,7 +76,9 @@ class WerewolfGame:
         rules.assign_roles(players)
 
         for player in players:
-            self.player_agents[player.id] = PlayerAgent(player, self.llm)
+            agent = PlayerAgent(player, self.llm)
+            agent.on_entry = lambda entry, p=player: self._emit_diary_entry(p, entry)
+            self.player_agents[player.id] = agent
 
         self._run_psytests()
 
@@ -89,12 +92,8 @@ class WerewolfGame:
         wolves = [p for p in players if get_handler(p.role).team == WEREWOLVES]
         for wolf in wolves:
             mates = [p.name for p in wolves if p.id != wolf.id]
-            if not mates:
-                continue
-            if diary:
-                self.player_agents[wolf.id].write_pack(mates)
-            else:
-                self.player_agents[wolf.id].add_knowledge(f"The other werewolves are: {', '.join(mates)}.")
+            if mates:
+                self.player_agents[wolf.id].set_pack(mates)
 
         self.state.players = players
         self.state.phase = GamePhase.SETUP
@@ -103,6 +102,12 @@ class WerewolfGame:
         self.state.game_log.append(f"[GAME MASTER] {opening}")
 
         return self.state
+
+    def _emit_diary_entry(self, player: PlayerProfile, entry: Dict) -> None:
+        """Tell the clients about a new diary entry. A diary is secret, so only in spectator mode
+        (REVEAL_ROLES); otherwise clients read it through the API once it is public."""
+        if get_settings().reveal_roles:
+            self._emit("diary_entry", {"player_id": player.id, "player": player.name, "entry": entry})
 
     def _run_psytests(self) -> None:
         """
@@ -152,9 +157,11 @@ class WerewolfGame:
         alive = rules.alive_players(self.state)
         targets: Dict[Role, Optional[PlayerProfile]] = {}
         for handler in night_handlers():
-            # Simplified: the first alive player of the role acts (werewolves would coordinate)
-            actor = next((p for p in alive if p.role == handler.role), None)
-            targets[handler.role] = self._choose_night_target(actor)
+            if handler.role == Role.WEREWOLF:
+                targets[handler.role] = self._wolf_night()      # the pack talks, then chooses together
+            else:      # the first alive player of the role acts
+                actor = next((p for p in alive if p.role == handler.role), None)
+                targets[handler.role] = self._choose_night_target(actor)
             if targets[handler.role] and handler.announce_night_choice:
                 decision = self.game_master.announce_werewolf_decision()
                 self.state.game_log.append(f"[GAME MASTER] {decision}")
@@ -168,6 +175,54 @@ class WerewolfGame:
             results['hunter_shots'],
         )
         return results
+
+    def _wolf_night(self) -> Optional[PlayerProfile]:
+        """
+        The living werewolves choose tonight's victim together: a short private talk, then each
+        proposes a target and the majority wins (see `rules.resolve_wolf_choice`). No usable
+        proposal gives a random valid target, as for the other roles.
+        """
+        wolves = [p for p in rules.alive_players(self.state) if p.role == Role.WEREWOLF]
+        valid_names = rules.valid_night_targets(self.state, wolves[0]) if wolves else []
+        if not valid_names:
+            return None
+        talk = self._wolf_chat(wolves, valid_names)
+        game_state = self._get_game_state_dict()
+        game_state['valid_targets'] = valid_names
+        game_state['wolf_chat'] = talk
+        proposals: Dict[str, Optional[str]] = {}
+        for wolf in wolves:
+            try:
+                answer = self.player_agents[wolf.id].night_action(game_state)
+            except Exception as e:
+                logger.warning("Night action failed for %s: %s", wolf.name, e)
+                answer = None
+            proposals[wolf.name] = match_player_name(answer, valid_names)
+        lead = wolves[(self.state.day_number - 1) % len(wolves)].name      # the lead rotates every night
+        choice = rules.resolve_wolf_choice(proposals, lead) or random.choice(valid_names)
+        victim = rules.find_player_by_name(self.state, choice)
+        for wolf in wolves:
+            self.player_agents[wolf.id].note_night_plan(self.state.day_number, victim.name)
+        return victim
+
+    def _wolf_chat(self, wolves: List[PlayerProfile], valid_names: List[str]) -> List[str]:
+        """The private talk of the pack (`wolf_chat_rounds` rounds, each wolf speaks once per round).
+        It goes to `state.wolf_log`, never to the public game log."""
+        talk: List[str] = []
+        if len(wolves) < 2:
+            return talk
+        for _ in range(get_settings().wolf_chat_rounds):
+            for wolf in wolves:
+                mates = [w.name for w in wolves if w.id != wolf.id]
+                try:
+                    said = self.player_agents[wolf.id].wolf_chat(talk, mates, valid_names)
+                except Exception as e:
+                    logger.warning("Pack talk failed for %s: %s", wolf.name, e)
+                    continue
+                if isinstance(said, str) and said.strip():
+                    talk.append(f"[{wolf.name}] {said.strip()}")
+        self.state.wolf_log.extend(f"Night {self.state.day_number}: {line}" for line in talk)
+        return talk
 
     def _witch_decision(self, alive: List[PlayerProfile], victim: Optional[PlayerProfile]
                         ) -> Tuple[bool, Optional[PlayerProfile]]:
@@ -281,6 +336,7 @@ class WerewolfGame:
         )
         self.state.game_log.append(f"[GAME MASTER] {announcement}")
         self._day_announcement = announcement
+        self._reactions = {}
 
         return announcement
 
@@ -339,6 +395,8 @@ class WerewolfGame:
 
         spoke_last_round = set()
         last_spoke_at = {}  # player name -> index of their latest message in this discussion
+        last_accused: Dict[str, str] = {}   # player name -> the player they accused last
+        reacted_upto: Dict[str, int] = {}   # player name -> messages already looked at for a reaction
         for discussion_round in range(1, max_rounds + 1):
             round_speech_count = 0
 
@@ -358,16 +416,21 @@ class WerewolfGame:
                 # call. The first turn of the day is never skipped, so someone opens the talk.
                 opening_turn = discussion_round == 1 and index == 0
                 since_spoke = len(discussion.messages) - last_spoke_at.get(player.name, -1) - 1
+                lines = [f"[{m.sender}] {m.content}" for m in discussion.messages]
+                # What was said since this player's last turn (None before their first turn)
+                new_lines = lines[last_spoke_at[player.name] + 1:] if player.name in last_spoke_at else None
                 if (settings.discussion_gate and not opening_turn
                         and not should_speak(player, current_conversation, player.name in spoke_last_round,
-                                             messages_since_spoke=since_spoke)):
+                                             messages_since_spoke=since_spoke,
+                                             new_lines=lines if new_lines is None else new_lines)):
                     self.metrics.add_skipped_turn()
                     continue
                 try:
                     agent = self.player_agents[player.id]
 
                     # Give each player the updated conversation to consider responding
-                    comment = agent.discuss(current_conversation, alive_names, self._scene(len(discussion.messages)))
+                    comment = agent.discuss(current_conversation, alive_names, self._scene(len(discussion.messages)),
+                                          f"Day {self.state.day_number}", new_lines)
 
                     # Filter out "no comment" responses
                     spoken = bool(comment and comment.strip() and comment.strip().lower() != "no comment")
@@ -398,6 +461,11 @@ class WerewolfGame:
 
                         logger.info("Round %s: %s spoke", discussion_round, player.name)
 
+                    # A change of strategy (accused, role claim, new suspect) goes to the diary
+                    self._maybe_react(player, agent, lines[reacted_upto.get(player.name, 0):],
+                                      comment if spoken else None, last_accused, alive_names)
+                    reacted_upto[player.name] = len(discussion.messages)
+
                 except Exception as e:
                     # A player whose model call fails stays silent this round
                     logger.warning("Error with player %s: %s", player.name, e)
@@ -418,6 +486,29 @@ class WerewolfGame:
             self.state.discussions.append(discussion)
 
         return messages
+
+    def _maybe_react(self, player: PlayerProfile, agent: PlayerAgent, new_lines: List[str],
+                     own_line: Optional[str], last_accused: Dict[str, str], alive_names: List[str]) -> None:
+        """
+        After a turn, decide with a cheap heuristic (no model call) whether the player's strategy
+        changed: accused, somebody claimed a role, or they turned on another player. If so, and
+        the player wrote fewer than `reactions_per_day` notes today, one model call writes a
+        `reaction` entry in their diary.
+        """
+        accused = accused_player(own_line, alive_names, player.name) if own_line else None
+        previous = last_accused.get(player.name)
+        if accused:
+            last_accused[player.name] = accused
+        limit = get_settings().reactions_per_day
+        if not get_settings().diary_enabled or self._reactions.get(player.name, 0) >= limit:
+            return
+        cause = reaction_trigger(player.name, new_lines, own_line, previous, alive_names)
+        if cause is None:
+            return
+        shown = new_lines + ([f"[{player.name}] {own_line}"] if own_line else [])
+        entry = agent.write_reaction(f"Day {self.state.day_number}", cause, shown)
+        if entry:
+            self._reactions[player.name] = self._reactions.get(player.name, 0) + 1
 
     def conduct_vote(self) -> Tuple[Optional[PlayerProfile], Dict[str, int]]:
         """
@@ -452,7 +543,10 @@ class WerewolfGame:
         for player in shuffled_voters:
             reason = None
             try:
-                vote_target = self.player_agents[player.id].vote(full_conversation, candidate_names, scene)
+                agent = self.player_agents[player.id]
+                day = f"Day {self.state.day_number}"
+                agent.plan_vote(full_conversation, candidate_names, scene, day)      # the plan comes first
+                vote_target = agent.vote(full_conversation, candidate_names, scene, day)
                 target = rules.find_player_by_name(self.state, vote_target)
                 if target and target.name in candidate_names and target.name != player.name:
                     votes[player.name] = target.name

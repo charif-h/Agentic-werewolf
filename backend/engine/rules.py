@@ -165,6 +165,29 @@ def resolve_night(state: GameState, targets: Dict[Role, Optional[PlayerProfile]]
     return results
 
 
+def resolve_wolf_choice(proposals: Dict[str, Optional[str]], lead: Optional[str] = None,
+                        rng: Optional[random.Random] = None) -> Optional[str]:
+    """
+    The victim the werewolves agree on, from `{wolf name: proposed target}` (None = no valid proposal)
+
+    The most proposed target wins. On a tie the proposal of the `lead` wolf wins if it is one of the
+    tied targets, otherwise one of them is picked at random. No valid proposal gives None.
+    """
+    votes: Dict[str, int] = {}
+    for target in proposals.values():
+        if target:
+            votes[target] = votes.get(target, 0) + 1
+    if not votes:
+        return None
+    best = max(votes.values())
+    tied = [target for target, count in votes.items() if count == best]
+    if len(tied) == 1:
+        return tied[0]
+    if lead and proposals.get(lead) in tied:
+        return proposals[lead]
+    return (rng or random).choice(tied)
+
+
 def describe_night(state: GameState) -> str:
     """Public summary of last night's deaths, e.g. 'Bob was killed.'"""
     results = state.night_actions

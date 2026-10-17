@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App.jsx';
+import DiaryModal from './components/DiaryModal.jsx';
 
 // The page talks to a fake live connection that the tests control
 const sockets = [];
@@ -309,6 +310,55 @@ describe('App', () => {
       expect(steps).toEqual(['🌙 Night 1', '🐺 Pack', '🃏 Role card']);
       expect(within(dialog).getByText('I am a werewolf.')).toBeInTheDocument();
       expect(within(dialog).getByText('My fellow werewolves are Cy.')).toBeInTheDocument();
+    });
+
+    it('shows decisions with the why-not line, plans, reactions and the sacrifice badge', async () => {
+      const original = fetch.getMockImplementation();
+      const typed = [
+        { id: 1, step: 'Day 1', kind: 'plan', text: 'Today I will vote against Cy because he lied.', data: { target: 'Cy' } },
+        {
+          id: 2, step: 'Day 1', kind: 'decision', tag: undefined,
+          text: 'My vote: Cy. Why: he lied. Why not Dee: she helped me.',
+          data: { decision: 'vote', target: 'Cy', not_chosen: { player: 'Dee', why_not: 'she helped me.' } },
+        },
+        {
+          id: 3, step: 'Day 1', kind: 'decision', text: 'My vote: Bob. Why: it makes me look innocent.',
+          data: { decision: 'vote', target: 'Bob', tag: 'intentional_sacrifice' },
+        },
+        { id: 4, step: 'Day 1', kind: 'reaction', text: 'John is accusing me.', data: { cause: 'accused' } },
+        {
+          id: 5, step: 'Night 1', kind: 'night_summary', text: 'A quiet night.', data: {}, summary: 'A quiet night.',
+          opinions: [{ player: 'Cy', plan: 'frame', reason: 'He is a threat.' }],
+        },
+      ];
+      fetch.mockImplementation((url, options) => (url === '/api/games/g1/players/p2/diary'
+        ? json({ player: 'Bob', entries: typed })
+        : original(url, options)));
+      await startedGame();
+      await userEvent.click(screen.getByRole('button', { name: /Diary/ }));
+      const dialog = await screen.findByRole('dialog', { name: 'Diary of Bob' });
+      expect(within(dialog).getByText('Why not Dee: she helped me.')).toBeInTheDocument();
+      expect(within(dialog).getByText('My vote: Cy. Why: he lied.')).toBeInTheDocument();       // no duplicated why-not
+      expect(within(dialog).getByText(/Intentional sacrifice of a mate/)).toBeInTheDocument();
+      expect(within(dialog).getByText('John is accusing me.')).toBeInTheDocument();
+      expect(within(dialog).getByText(/🎯 frame/)).toBeInTheDocument();
+      const steps = within(dialog).getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+      expect(steps).toEqual(['🌙 Night 1', '💭 Day 1', '⚖️ Day 1', '⚖️ Day 1', '🧭 Day 1']);
+    });
+
+    it('adds the entries sent live to the ones loaded', async () => {
+      const original = fetch.getMockImplementation();
+      fetch.mockImplementation((url, options) => (url === '/api/games/g1/players/p2/diary'
+        ? json({ player: 'Bob', entries: [{ id: 1, step: 'Role card', kind: 'role_card', text: 'I am a seer.', data: {} }] })
+        : original(url, options)));
+      const live = [
+        { id: 1, step: 'Role card', kind: 'role_card', text: 'I am a seer.', data: {} },
+        { id: 2, step: 'Night 1', kind: 'reaction', text: 'Fresh from the socket.', data: {} },
+      ];
+      render(<DiaryModal gameId="g1" player={{ id: 'p2', name: 'Bob', age: 30, personality: {} }} liveEntries={live} onClose={() => {}} />);
+      const dialog = await screen.findByRole('dialog', { name: 'Diary of Bob' });
+      expect(await within(dialog).findByText('Fresh from the socket.')).toBeInTheDocument();
+      expect(within(dialog).getAllByText('I am a seer.')).toHaveLength(1);        // the duplicate is dropped
     });
 
     it('shows the server error when the diary cannot be read', async () => {

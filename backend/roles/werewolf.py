@@ -17,11 +17,11 @@ class Werewolf(RoleHandler):
 - Act like a concerned villager
 - Subtly redirect suspicion onto others
 - Don't defend other werewolves obviously"""
-    voting_strategy = """As a WEREWOLF, vote to eliminate:
+    voting_strategy = """As a WEREWOLF, vote to eliminate a villager:
 1. Confirmed or suspected special roles (seer, witch, etc.)
 2. The most active and influential villagers
 3. Anyone who has been suspicious of werewolves
-4. Avoid voting for fellow werewolves unless absolutely necessary"""
+4. Never vote for a fellow werewolf, except as a deliberate sacrifice to look innocent"""
     response_hint = "- Consider if you need to deflect suspicion or redirect attention"
 
     night_order = 10

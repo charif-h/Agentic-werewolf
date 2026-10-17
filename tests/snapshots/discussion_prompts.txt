@@ -11,6 +11,9 @@ Conversation so far:
 [Cy] Hal was killed. Ann, you were awake last night.
 [Dee] Eli has been very quiet since the start.
 
+Cy talked about you: "Hal was killed. Ann, you were awake last night."
+Answer them if they accuse or question you.
+
 Alive players: Ann, Bob, Cy, Dee, Eli
 
 Secret: you are a guard. You can protect players from attacks.
@@ -28,7 +31,7 @@ Good replies look like this:
 - "I trust Bob. He stayed with us all night."
 - "Something is off about Eli, he has not said a word."
 
-Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
+Answer in JSON: {"reason": "<why you say this, private: nobody hears it>", "speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"reason": "<why>", "speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
 
 ======================================================================
 ### hunter
@@ -43,6 +46,9 @@ Conversation so far:
 [Bob] I slept badly. Does anyone know what happened to Hal?
 [Cy] Hal was killed. Ann, you were awake last night.
 [Dee] Eli has been very quiet since the start.
+
+Cy talked about you: "Hal was killed. Ann, you were awake last night."
+Answer them if they accuse or question you.
 
 Alive players: Ann, Bob, Cy, Dee, Eli
 
@@ -61,7 +67,7 @@ Good replies look like this:
 - "I trust Bob. He stayed with us all night."
 - "Something is off about Eli, he has not said a word."
 
-Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
+Answer in JSON: {"reason": "<why you say this, private: nobody hears it>", "speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"reason": "<why>", "speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
 
 ======================================================================
 ### seer
@@ -76,6 +82,9 @@ Conversation so far:
 [Bob] I slept badly. Does anyone know what happened to Hal?
 [Cy] Hal was killed. Ann, you were awake last night.
 [Dee] Eli has been very quiet since the start.
+
+Cy talked about you: "Hal was killed. Ann, you were awake last night."
+Answer them if they accuse or question you.
 
 Alive players: Ann, Bob, Cy, Dee, Eli
 
@@ -94,7 +103,7 @@ Good replies look like this:
 - "I trust Bob. He stayed with us all night."
 - "Something is off about Eli, he has not said a word."
 
-Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
+Answer in JSON: {"reason": "<why you say this, private: nobody hears it>", "speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"reason": "<why>", "speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
 
 ======================================================================
 ### villager
@@ -109,6 +118,9 @@ Conversation so far:
 [Bob] I slept badly. Does anyone know what happened to Hal?
 [Cy] Hal was killed. Ann, you were awake last night.
 [Dee] Eli has been very quiet since the start.
+
+Cy talked about you: "Hal was killed. Ann, you were awake last night."
+Answer them if they accuse or question you.
 
 Alive players: Ann, Bob, Cy, Dee, Eli
 
@@ -127,7 +139,7 @@ Good replies look like this:
 - "I trust Bob. He stayed with us all night."
 - "Something is off about Eli, he has not said a word."
 
-Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
+Answer in JSON: {"reason": "<why you say this, private: nobody hears it>", "speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"reason": "<why>", "speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
 
 ======================================================================
 ### werewolf
@@ -142,6 +154,9 @@ Conversation so far:
 [Bob] I slept badly. Does anyone know what happened to Hal?
 [Cy] Hal was killed. Ann, you were awake last night.
 [Dee] Eli has been very quiet since the start.
+
+Cy talked about you: "Hal was killed. Ann, you were awake last night."
+Answer them if they accuse or question you.
 
 Alive players: Ann, Bob, Cy, Dee, Eli
 
@@ -160,7 +175,7 @@ Good replies look like this:
 - "I trust Bob. He stayed with us all night."
 - "Something is off about Eli, he has not said a word."
 
-Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
+Answer in JSON: {"reason": "<why you say this, private: nobody hears it>", "speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"reason": "<why>", "speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
 
 ======================================================================
 ### witch
@@ -175,6 +190,9 @@ Conversation so far:
 [Bob] I slept badly. Does anyone know what happened to Hal?
 [Cy] Hal was killed. Ann, you were awake last night.
 [Dee] Eli has been very quiet since the start.
+
+Cy talked about you: "Hal was killed. Ann, you were awake last night."
+Answer them if they accuse or question you.
 
 Alive players: Ann, Bob, Cy, Dee, Eli
 
@@ -193,4 +211,4 @@ Good replies look like this:
 - "I trust Bob. He stayed with us all night."
 - "Something is off about Eli, he has not said a word."
 
-Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
+Answer in JSON: {"reason": "<why you say this, private: nobody hears it>", "speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"reason": "<why>", "speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.

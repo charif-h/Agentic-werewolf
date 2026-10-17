@@ -56,13 +56,19 @@ Dependencies point downwards only: `engine` and `roles` import nothing from `age
 
 | Phase played | What happens | Next phase |
 |---|---|---|
-| night | the first werewolf chooses a victim, the guard a person to protect, the seer someone to inspect; the witch is told the victim and may heal and/or poison; the engine resolves it; a dead hunter shoots; the seer and the witch are told what they learned | day |
+| night | the **werewolves wake up together**: a short private talk (`WOLF_CHAT_ROUNDS`, kept in `state.wolf_log`, never in the public log), then each proposes a victim and the majority wins (a tie goes to a lead wolf that rotates every night); the guard chooses a person to protect, the seer someone to inspect; the witch is told the victim and may heal and/or poison; the engine resolves it; a dead hunter shoots; the seer and the witch are told what they learned | day |
 | day | `conduct_discussion`: up to 5 rounds of players speaking in turn (see below) until the Game Master says it is over | discussion |
 | discussion | every player votes independently (a vote is always for another living player); the engine tallies and eliminates (ties are random); a dead hunter shoots; win condition checked | night, or the end |
 
 Every step reports `player_spoke`, `vote_cast`, then `phase_change` (and `game_ended` after the last one) to the game's WebSocket. With `?background=true` the request answers 202 at once and the result arrives as the event.
 
-**The discussion.** Players are asked in random order. Before asking, `talkativeness` decides without a model call: extraverts speak more than introverts, someone who spoke last round less, someone silent for a long time more, and someone who was just named always answers (the very first turn is never skipped). A line that only repeats what was just said is not published. The Game Master ends the discussion after a silent round, at the maximum, or when too few people speak. All of this exists to save model calls and to keep the talk interesting.
+**Before the first night.** `setup_game` deals the roles, every player passes the psychological test, then writes the **role card** as the first entry of their diary; werewolves write the **pack** (their mates, given by the engine, never guessed). The flow is: psytest, role card, first night, day.
+
+**The diary.** Each entry is typed (`{id, step, kind, text, data}`, `models/diary.py`): `role_card`, `pack`, `plan`, `decision`, `reaction`, `night_summary`, `day_summary`. Prompts get two tiers: a "first page" header (role card, pack) that is never cut, and the latest entries newest first within `DIARY_TOKEN_BUDGET`. Every decision (night target, vote, potion, shot, a line that names a player) is asked as JSON that starts with a `reason`, and the reason goes to the diary at once as a `decision` entry, with no extra model call; a vote also names the runner-up and why not. A werewolf's diary does not guess its mates: it holds a `frame / ignore / ally` plan for the other players, and a vote against a mate is accepted only as a deliberate `sacrifice_mate` with a reason (traced as `intentional_sacrifice`; a mistake is caught by a guard and asked again). The diary stays secret: the API shows it for dead players, in spectator mode and after the game; live `diary_entry` events are sent in spectator mode only.
+
+**Before the vote.** Every player writes a `plan` (whom and why) that becomes the main input of the vote, and the vote is checked against it: a different target is asked once more, an explained change is kept, an unexplained one gives the plan back (`VOTE_PLAN_ENABLED`). The day diary then says what changed.
+
+**The discussion.** Players are asked in random order. Before asking, `talkativeness` decides without a model call: extraverts speak more than introverts, someone who spoke last round less, someone silent for a long time more, and someone who was just named always answers (the very first turn is never skipped). A player named or accused since their last turn also always answers, and each turn shows "New since your last turn" and what was said about them. The first speaker of the day gets the scene (day, victim, "you speak first"). After a turn, a cheap heuristic (accused, role claim, new suspect) may make the player write a `reaction` note in their diary, at most `REACTIONS_PER_DAY` times. A line that only repeats what was just said is not published. The Game Master ends the discussion after a silent round, at the maximum, or when too few people speak. All of this exists to save model calls and to keep the talk interesting.
 
 **What a player is asked.** Each question is a prompt plus a JSON schema. A vote or a night target must be one of the valid names (an `enum`, enforced by Ollama), the discussion answer is `{speak, message}`, the witch's is `{save, poison}`. If the model is unreachable or the answer is unusable the game uses a random valid target, stays silent in the discussion, and **never** uses a potion by chance.
 
@@ -83,8 +89,9 @@ React with Vite (no runtime dependency but React). `useGame` keeps one reducer, 
 
 ## Tests and tools
 
-* About 360 backend tests (5 s, no GPU) with a scripted `FakeLLMClient`; the frontend has its own (Vitest). Full games are played by the engine alone, by the orchestrator with fake agents, and through the HTTP API and WebSocket.
+* About 530 backend tests (5 s, no GPU) with a scripted `FakeLLMClient`; the frontend has its own (Vitest). Full games are played by the engine alone, by the orchestrator with fake agents, and through the HTTP API and WebSocket.
 * `tests/snapshots/` pins the exact prompts.
+* `scripts/evaluate_behaviour.py` measures the behaviour (opening back-references, psytest pass rate, wolf votes on a mate, diary/vote mismatch, reactions and calls per day), with `--compare` to play with the M7 features off and on; `ScriptedPlayers` in `llm/fake.py` scripts what each player answers to each kind of question for deterministic behaviour tests. The real-model smoke workflow runs it as a non-blocking report.
 * `scripts/simulate.py` plays complete games against the real model and reports win rates, invalid answers, latency and role leaks; `scripts/benchmark_models.py` compares models. They found real problems that the unit tests could not (a model habit of closing JSON strings with curly quotes).
 * CI (GitHub Actions) runs lint, tests and the frontend build; see [ci.md](ci.md).
 

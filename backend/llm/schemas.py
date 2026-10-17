@@ -12,49 +12,96 @@ from typing import Any, Dict, Iterable, Optional, Tuple
 NONE = "none"
 
 
-def target_schema(names: Iterable[str]) -> Dict[str, Any]:
-    """`{"target": <one of names>}`; without names any string is accepted"""
+def target_schema(names: Iterable[str], vote: bool = False, sacrifice: bool = False) -> Dict[str, Any]:
+    """
+    `{"reason": str, "target": <one of names>}`; without names any string is accepted
+
+    The reason comes first: the model reasons, then chooses. A `vote` also names the runner-up
+    and why not (`"not_chosen": {"player", "why_not"}`, only when there is another candidate);
+    with `sacrifice` (a werewolf voting) the answer says whether a mate is sacrificed on purpose.
+    """
     names = list(names)
     target: Dict[str, Any] = {"type": "string"}
     if names:
         target["enum"] = names
-    return {"type": "object", "properties": {"target": target}, "required": ["target"]}
+    properties: Dict[str, Any] = {"reason": {"type": "string"}, "target": target}
+    required = ["reason", "target"]
+    if vote and len(names) > 1:
+        properties["not_chosen"] = {
+            "type": "object",
+            "properties": {"player": {"type": "string", "enum": names}, "why_not": {"type": "string"}},
+            "required": ["player", "why_not"],
+        }
+        required.append("not_chosen")
+    if sacrifice:
+        properties["sacrifice_mate"] = {"type": "boolean"}
+        required.append("sacrifice_mate")
+    return {"type": "object", "properties": properties, "required": required}
 
 
 def discussion_schema() -> Dict[str, Any]:
-    """`{"speak": bool, "message": str}`: whether the player talks, and what they say"""
+    """
+    `{"reason": str, "speak": bool, "message": str}`: why the player says it (private), whether
+    they talk, and what they say out loud
+    """
     return {
         "type": "object",
-        "properties": {"speak": {"type": "boolean"}, "message": {"type": "string"}},
-        "required": ["speak", "message"],
+        "properties": {"reason": {"type": "string"}, "speak": {"type": "boolean"}, "message": {"type": "string"}},
+        "required": ["reason", "speak", "message"],
     }
 
 
 GUESSES = ["werewolf", "villager", "unsure"]
 CONFIDENCES = ["low", "medium", "high"]
+PLANS = ["frame", "ignore", "ally"]       # what a werewolf plans for a player who is not in its pack
 
 
-def diary_schema(names: Iterable[str]) -> Dict[str, Any]:
+def diary_schema(names: Iterable[str], wolf: bool = False) -> Dict[str, Any]:
     """
     `{"summary": str, "opinions": [{"player", "guess", "confidence", "reason"}]}`:
-    what the player thinks of this step, and of each other player
+    what the player thinks of this step, and of each other player. A werewolf knows who is a
+    werewolf, so for it (`wolf`) `names` are the players outside the pack and each opinion is a
+    `plan` ("frame", "ignore" or "ally") instead of a guess.
     """
-    opinion = {
-        "type": "object",
-        "properties": {
-            "player": {"type": "string", "enum": list(names)},
-            "reason": {"type": "string"},      # before the label: the model reasons, then concludes
-            "guess": {"type": "string", "enum": GUESSES},
-            "confidence": {"type": "string", "enum": CONFIDENCES},
-        },
-        "required": ["player", "reason", "guess", "confidence"],
-    }
+    if wolf:
+        opinion = {
+            "type": "object",
+            "properties": {
+                "player": {"type": "string", "enum": list(names)},
+                "reason": {"type": "string"},
+                "plan": {"type": "string", "enum": PLANS},
+            },
+            "required": ["player", "reason", "plan"],
+        }
+    else:
+        opinion = {
+            "type": "object",
+            "properties": {
+                "player": {"type": "string", "enum": list(names)},
+                "reason": {"type": "string"},      # before the label: the model reasons, then concludes
+                "guess": {"type": "string", "enum": GUESSES},
+                "confidence": {"type": "string", "enum": CONFIDENCES},
+            },
+            "required": ["player", "reason", "guess", "confidence"],
+        }
     return {
         "type": "object",
         "properties": {"summary": {"type": "string"},
                        "opinions": {"type": "array", "items": opinion}},
         "required": ["summary", "opinions"],
     }
+
+
+def reaction_schema() -> Dict[str, Any]:
+    """`{"text": str}`: a short diary note about a change in the discussion"""
+    return {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
+
+
+def parse_reaction(text: Optional[str]) -> Optional[str]:
+    """The note of a reaction answer, or None when it is empty or not valid"""
+    data = parse_json(text)
+    note = data.get("text") if data else None
+    return note.strip() if isinstance(note, str) and note.strip() else None
 
 
 def psytest_schema(count: int) -> Dict[str, Any]:
@@ -77,14 +124,15 @@ def psytest_schema(count: int) -> Dict[str, Any]:
 
 
 def witch_schema(poison_targets: Iterable[str]) -> Dict[str, Any]:
-    """`{"save": bool, "poison": <a name or "none">}`"""
+    """`{"reason": str, "save": bool, "poison": <a name or "none">}`"""
     return {
         "type": "object",
         "properties": {
+            "reason": {"type": "string"},
             "save": {"type": "boolean"},
             "poison": {"type": "string", "enum": list(poison_targets) + [NONE]},
         },
-        "required": ["save", "poison"],
+        "required": ["reason", "save", "poison"],
     }
 
 
@@ -100,6 +148,13 @@ def parse_json(text: Optional[str]) -> Optional[Dict[str, Any]]:
     return data if isinstance(data, dict) else None
 
 
+def parse_reason(text: Optional[str]) -> str:
+    """The `reason` of a decision answer, trimmed ('' when there is none)"""
+    data = parse_json(text)
+    reason = data.get("reason") if data else None
+    return reason.strip() if isinstance(reason, str) else ""
+
+
 def parse_target(text: Optional[str], names: Iterable[str]) -> Optional[str]:
     """The valid name in a `{"target": ...}` answer (spelled as in `names`), or None"""
     data = parse_json(text)
@@ -112,11 +167,33 @@ def parse_target(text: Optional[str], names: Iterable[str]) -> Optional[str]:
     return None
 
 
+def parse_decision(text: Optional[str], names: Iterable[str]) -> Optional[Dict[str, Any]]:
+    """
+    A decision `{"target", "reason", "not_chosen", "sacrifice_mate"}` from a decision answer, or None
+    when the target is not one of `names`. The reason may be empty (the caller asks again);
+    `not_chosen` is `{"player", "why_not"}` or None and `sacrifice_mate` a bool (false when absent).
+    """
+    names = list(names)
+    target = parse_target(text, names)
+    if target is None:
+        return None
+    data = parse_json(text) or {}
+    not_chosen = data.get("not_chosen")
+    if isinstance(not_chosen, dict) and isinstance(not_chosen.get("why_not"), str):
+        player = parse_target(json.dumps({"target": not_chosen.get("player")}), names)
+        not_chosen = ({"player": player, "why_not": not_chosen["why_not"].strip()}
+                      if player and player != target else None)
+    else:
+        not_chosen = None
+    return {"target": target, "reason": parse_reason(text), "not_chosen": not_chosen,
+            "sacrifice_mate": data.get("sacrifice_mate") is True}
+
+
 # Gemma likes typographic quotes: it writes curly apostrophes inside the message and then
 # closes the string with a curly quote too, so the JSON never closes:
 #   {"speak": true, "message": "Bob, it’s odd.”} ...garbage...
 _BROKEN_DISCUSSION = re.compile(
-    r'^\s*\{\s*"speak"\s*:\s*(true|false)\s*,\s*"message"\s*:\s*"(.*?)["“”]\s*\}',
+    r'^\s*\{\s*(?:"reason"\s*:\s*"[^"]*"\s*,\s*)?"speak"\s*:\s*(true|false)\s*,\s*"message"\s*:\s*"(.*?)["“”]\s*\}',
     re.DOTALL)
 
 
@@ -151,10 +228,11 @@ def parse_witch(text: Optional[str], poison_targets: Iterable[str]) -> Optional[
     return data["save"], None
 
 
-def parse_diary(text: Optional[str], names: Iterable[str]) -> Optional[Dict[str, Any]]:
+def parse_diary(text: Optional[str], names: Iterable[str], wolf: bool = False) -> Optional[Dict[str, Any]]:
     """
     A clean diary entry `{"summary", "opinions"}` from a diary answer, or None if it is not valid.
     Opinions about unknown players are dropped, and a player appears once (the first opinion wins).
+    For a werewolf (`wolf`) an opinion is `{"player", "plan", "reason"}`.
     """
     data = parse_json(text)
     if not data or not isinstance(data.get("summary"), str) or not isinstance(data.get("opinions"), list):
@@ -166,6 +244,12 @@ def parse_diary(text: Optional[str], names: Iterable[str]) -> Optional[Dict[str,
             continue
         name = valid.get(item["player"].strip().lower())
         guess, confidence, reason = item.get("guess"), item.get("confidence"), item.get("reason")
+        if wolf:
+            if name is None or name in seen or item.get("plan") not in PLANS or not isinstance(reason, str):
+                continue
+            seen.add(name)
+            opinions.append({"player": name, "plan": item["plan"], "reason": reason.strip()})
+            continue
         if (name is None or name in seen or guess not in GUESSES or confidence not in CONFIDENCES
                 or not isinstance(reason, str)):
             continue

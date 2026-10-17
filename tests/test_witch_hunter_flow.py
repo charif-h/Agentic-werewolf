@@ -147,7 +147,7 @@ def test_werewolves_learn_their_teammates_at_setup():
         mate = next(w for w in wolves if w.id != wolf.id)
         agent = game.player_agents[wolf.id]
         assert agent.knowledge == []                      # noted in the diary instead
-        assert f"Your diary, first page: My fellow werewolves are {mate.name}." in agent._knowledge_with_notes()
+        assert f"Your diary, first page: My fellow werewolves are {mate.name}. I must hide it." in agent._knowledge_with_notes()
     others = [p for p in game.state.players if p.role != Role.WEREWOLF]
     assert all(game.player_agents[p.id].knowledge == [] for p in others)
 
@@ -239,7 +239,7 @@ def test_witch_and_hunter_prompts():
     assert "nobody was attacked" in only_pass and "potions are used" in only_pass
     assert "save: use" not in only_pass and "poison: kill" not in only_pass
     assert prompts.hunter_prompt("Shoot", ["Bob", "Cy"]) == (
-        'Shoot from these players: Bob, Cy. Answer in JSON: {"target": "<name>"}.')
+        'Shoot from these players: Bob, Cy. Answer in JSON: {"reason": "<why, one short sentence>", "target": "<name>"}.')
 
 
 def test_agent_remembers_facts_and_uses_them_in_every_prompt():

@@ -22,6 +22,7 @@ believing a difference between two runs.
 import argparse
 import json
 import random
+import re
 import statistics
 import sys
 import time
@@ -46,18 +47,34 @@ class RandomPlayerClient:
         properties = (json_schema or {}).get("properties", {})
         if "target" in properties:
             names = properties["target"].get("enum") or ["Nobody"]
-            answer = {"target": random.choice(names)}
+            mates = re.search(r"Your pack, all werewolves, you know it for sure: ([^.]*)\.", messages[-1].content)
+            if mates:                                    # a werewolf voting: not against its pack
+                pack = [m.strip() for m in mates.group(1).split(",")]
+                names = [n for n in names if n not in pack] or names
+            answer = {"reason": "Random pick.", "target": random.choice(names)}
+            if "not_chosen" in properties:
+                other = [n for n in names if n != answer["target"]]
+                if other:
+                    answer["not_chosen"] = {"player": random.choice(other), "why_not": "Random pick."}
+            if "sacrifice_mate" in properties:
+                answer["sacrifice_mate"] = False
         elif "speak" in properties:
             speak = random.random() < 0.8
-            answer = {"speak": speak, "message": random.choice(["Bob looks odd.", "I trust Cy."]) if speak else ""}
+            answer = {"reason": "Random pick.", "speak": speak,
+                      "message": random.choice(["Bob looks odd.", "I trust Cy."]) if speak else ""}
         elif "answers" in properties:
             answer = {"answers": [{"statement": "", "rating": random.randint(1, 5)} for _ in range(properties["answers"]["minItems"])]}
         elif "opinions" in properties:
-            names = properties["opinions"]["items"]["properties"]["player"]["enum"]
-            answer = {"summary": "Nothing clear yet.", "opinions": [
-                {"player": n, "guess": "unsure", "confidence": "low", "reason": "No proof."} for n in names]}
+            item = properties["opinions"]["items"]["properties"]
+            names = item["player"]["enum"]
+            if "plan" in item:
+                answer = {"summary": "Nothing clear yet.", "opinions": [
+                    {"player": n, "plan": "ignore", "reason": "No danger."} for n in names]}
+            else:
+                answer = {"summary": "Nothing clear yet.", "opinions": [
+                    {"player": n, "guess": "unsure", "confidence": "low", "reason": "No proof."} for n in names]}
         else:
-            answer = {"save": False, "poison": "none"}
+            answer = {"reason": "Random pick.", "save": False, "poison": "none"}
         metrics = current_metrics()
         if metrics is not None:
             metrics.add_call(0.0, 0.0, {})
