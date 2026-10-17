@@ -43,9 +43,20 @@ jobs:
           ${{ inputs.model != '' && format('--model {0}', inputs.model) || '' }}
           --json simulation.json --markdown simulation.md
 
+      # Behaviour report (back-references, psytest, wolf votes, diary/vote coherence...). Never blocks the run.
+      - name: Evaluate the behaviour of the players
+        continue-on-error: true
+        run: >
+          python scripts/evaluate_behaviour.py
+          --games ${{ inputs.games }} --players ${{ inputs.players }}
+          ${{ inputs.model != '' && format('--model {0}', inputs.model) || '' }}
+          --json behaviour.json --markdown behaviour.md
+
       - name: Show the report
         if: always()
-        run: cat simulation.md >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          cat simulation.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -f behaviour.md ]; then cat behaviour.md >> "$GITHUB_STEP_SUMMARY"; fi
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -54,3 +65,5 @@ jobs:
           path: |
             simulation.json
             simulation.md
+            behaviour.json
+            behaviour.md
