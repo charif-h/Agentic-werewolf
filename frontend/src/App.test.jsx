@@ -292,6 +292,25 @@ describe('App', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 
+    it('shows the role card and the pack, which have no opinions', async () => {
+      const original = fetch.getMockImplementation();
+      const typed = [
+        { id: 1, step: 'Role card', kind: 'role_card', text: 'I am a werewolf.', data: { role: 'werewolf' } },
+        { id: 2, step: 'Pack', kind: 'pack', text: 'My fellow werewolves are Cy.', data: { mates: ['Cy'] } },
+        { id: 3, step: 'Night 1', kind: 'night_summary', text: 'A quiet night.', data: {}, summary: 'A quiet night.', opinions: ENTRY.opinions },
+      ];
+      fetch.mockImplementation((url, options) => (url === '/api/games/g1/players/p2/diary'
+        ? json({ player: 'Bob', entries: typed })
+        : original(url, options)));
+      await startedGame();
+      await userEvent.click(screen.getByRole('button', { name: /Diary/ }));
+      const dialog = await screen.findByRole('dialog', { name: 'Diary of Bob' });
+      const steps = within(dialog).getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+      expect(steps).toEqual(['🌙 Night 1', '🐺 Pack', '🃏 Role card']);
+      expect(within(dialog).getByText('I am a werewolf.')).toBeInTheDocument();
+      expect(within(dialog).getByText('My fellow werewolves are Cy.')).toBeInTheDocument();
+    });
+
     it('shows the server error when the diary cannot be read', async () => {
       const original = fetch.getMockImplementation();
       fetch.mockImplementation((url, options) => (url.endsWith('/diary')

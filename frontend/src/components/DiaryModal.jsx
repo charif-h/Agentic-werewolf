@@ -7,9 +7,19 @@ const GUESS_LABELS = {
   unsure: '❔ unsure',
 };
 
+const KIND_ICONS = {
+  role_card: '🃏',
+  pack: '🐺',
+  reaction: '💭',
+  decision: '⚖️',
+  plan: '🧭',
+  night_summary: '🌙',
+  day_summary: '☀️',
+};
+
 /**
- * The private diary of one player: one entry per night and day, with an opinion on each other
- * player and the reason for it. It is loaded when it opens and again when the game moves on
+ * The private diary of one player: the role card first, then one entry per night and day, with an
+ * opinion on each other player and the reason for it. It is loaded when it opens and again when the game moves on
  * (`version` changes), so a diary left open follows the game.
  */
 const DiaryModal = ({ gameId, player, version, onClose }) => {
@@ -56,11 +66,13 @@ const DiaryModal = ({ gameId, player, version, onClose }) => {
           <p>{player.name} has not written anything yet. The first entry comes at dawn.</p>
         )}
         {!error && entries && [...entries].reverse().map((entry) => (
-          <section key={entry.step} className="diary-entry">
-            <h3>{entry.step.startsWith('Night') ? '🌙' : '☀️'} {entry.step}</h3>
-            <p className="diary-summary">{entry.summary}</p>
+          <section key={entry.id ?? entry.step} className="diary-entry">
+            <h3>
+              {KIND_ICONS[entry.kind] || (entry.step.startsWith('Night') ? '🌙' : '☀️')} {entry.step}
+            </h3>
+            <p className="diary-summary">{entry.text ?? entry.summary}</p>
             <ul>
-              {entry.opinions.map((opinion) => (
+              {(entry.opinions || []).map((opinion) => (
                 <li key={opinion.player}>
                   <strong>{opinion.player}</strong>{' '}
                   <span className={`guess ${opinion.guess}`}>
