@@ -14,7 +14,7 @@ from backend.llm import ASSISTANT, SYSTEM, USER, LLMClient, Message, fit_text
 from backend.llm.tokens import OMISSION_NOTICE, fit_lines
 from backend.llm import schemas
 from backend.agents import psytest
-from backend.models.diary import DAY_SUMMARY, HEADER_KINDS, NIGHT_SUMMARY, PACK, ROLE_CARD, make_entry
+from backend.models.diary import DAY_SUMMARY, HEADER_KINDS, NIGHT_SUMMARY, PACK, PLAN, ROLE_CARD, make_entry
 from backend.models.personality import TRAITS, PersonaCheck
 from backend.config import get_settings
 from backend.llm.metrics import current_metrics
@@ -163,7 +163,24 @@ class PlayerAgent:
         if not self.handler.acts_at_night:
             return None
         names = game_state.get('valid_targets', [])
-        return self._choose_target(game_state, self.handler.night_prompt(names), names)
+        action = prompts.pack_talk_block(game_state.get('wolf_chat', [])) + self.handler.night_prompt(names)
+        return self._choose_target(game_state, action, names)
+
+    def wolf_chat(self, talk: List[str], mates: List[str], targets: List[str]) -> str:
+        """What a werewolf tells the pack before the victim is chosen ('' when silent or unclear)"""
+        context = prompts.wolf_chat_prompt(self.profile.name, mates, targets, talk, self._knowledge_with_notes())
+        system_prompt = prompts.short_reply_system_prompt(self.profile.name, self.profile.personality.summary())
+        parsed = schemas.parse_discussion(
+            self._ask(system_prompt, context, schemas.discussion_schema(), SPEECH_TOKENS))
+        if parsed is None:
+            self._note_invalid_answer()
+            return ""
+        return self._clean_reply(parsed[1]) if parsed[0] else ""
+
+    def note_night_plan(self, night: int, victim: str) -> None:
+        """Write down the victim the pack agreed on (no model call)"""
+        if get_settings().diary_enabled:
+            self._add_entry(f"Night {night}", PLAN, f"Tonight the pack kills {victim}.", {"victim": victim})
 
     def _knowledge_with_notes(self) -> List[str]:
         """
@@ -199,7 +216,7 @@ class PlayerAgent:
 
     def write_pack(self, mates: List[str]) -> Dict[str, Any]:
         """Note the other members of the pack (the werewolves) in the diary"""
-        return self._add_entry("Pack", PACK, f"My fellow werewolves are {', '.join(mates)}.", {"mates": mates})
+        return self._add_entry("Pack", PACK, f"My fellow werewolves are {', '.join(mates)}. I must hide it.", {"mates": mates})
 
     def add_knowledge(self, fact: str) -> None:
         """Remember a secret fact (e.g. the seer's findings); it appears in later prompts"""

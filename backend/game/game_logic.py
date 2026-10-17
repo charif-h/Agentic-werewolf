@@ -19,7 +19,7 @@ from backend.models.game_models import (
 from backend.agents.profile_generator import generate_all_players
 from backend.agents.player_agent import PlayerAgent
 from backend.game.game_master import GameMaster
-from backend.game.targets import parse_witch_answer, pick_target
+from backend.game.targets import match_player_name, parse_witch_answer, pick_target
 from backend.game.talkativeness import is_repetition, should_speak
 from backend.llm import LLMClient
 from backend.llm.metrics import LLMMetrics, track
@@ -152,9 +152,11 @@ class WerewolfGame:
         alive = rules.alive_players(self.state)
         targets: Dict[Role, Optional[PlayerProfile]] = {}
         for handler in night_handlers():
-            # Simplified: the first alive player of the role acts (werewolves would coordinate)
-            actor = next((p for p in alive if p.role == handler.role), None)
-            targets[handler.role] = self._choose_night_target(actor)
+            if handler.role == Role.WEREWOLF:
+                targets[handler.role] = self._wolf_night()      # the pack talks, then chooses together
+            else:      # the first alive player of the role acts
+                actor = next((p for p in alive if p.role == handler.role), None)
+                targets[handler.role] = self._choose_night_target(actor)
             if targets[handler.role] and handler.announce_night_choice:
                 decision = self.game_master.announce_werewolf_decision()
                 self.state.game_log.append(f"[GAME MASTER] {decision}")
@@ -168,6 +170,54 @@ class WerewolfGame:
             results['hunter_shots'],
         )
         return results
+
+    def _wolf_night(self) -> Optional[PlayerProfile]:
+        """
+        The living werewolves choose tonight's victim together: a short private talk, then each
+        proposes a target and the majority wins (see `rules.resolve_wolf_choice`). No usable
+        proposal gives a random valid target, as for the other roles.
+        """
+        wolves = [p for p in rules.alive_players(self.state) if p.role == Role.WEREWOLF]
+        valid_names = rules.valid_night_targets(self.state, wolves[0]) if wolves else []
+        if not valid_names:
+            return None
+        talk = self._wolf_chat(wolves, valid_names)
+        game_state = self._get_game_state_dict()
+        game_state['valid_targets'] = valid_names
+        game_state['wolf_chat'] = talk
+        proposals: Dict[str, Optional[str]] = {}
+        for wolf in wolves:
+            try:
+                answer = self.player_agents[wolf.id].night_action(game_state)
+            except Exception as e:
+                logger.warning("Night action failed for %s: %s", wolf.name, e)
+                answer = None
+            proposals[wolf.name] = match_player_name(answer, valid_names)
+        lead = wolves[(self.state.day_number - 1) % len(wolves)].name      # the lead rotates every night
+        choice = rules.resolve_wolf_choice(proposals, lead) or random.choice(valid_names)
+        victim = rules.find_player_by_name(self.state, choice)
+        for wolf in wolves:
+            self.player_agents[wolf.id].note_night_plan(self.state.day_number, victim.name)
+        return victim
+
+    def _wolf_chat(self, wolves: List[PlayerProfile], valid_names: List[str]) -> List[str]:
+        """The private talk of the pack (`wolf_chat_rounds` rounds, each wolf speaks once per round).
+        It goes to `state.wolf_log`, never to the public game log."""
+        talk: List[str] = []
+        if len(wolves) < 2:
+            return talk
+        for _ in range(get_settings().wolf_chat_rounds):
+            for wolf in wolves:
+                mates = [w.name for w in wolves if w.id != wolf.id]
+                try:
+                    said = self.player_agents[wolf.id].wolf_chat(talk, mates, valid_names)
+                except Exception as e:
+                    logger.warning("Pack talk failed for %s: %s", wolf.name, e)
+                    continue
+                if isinstance(said, str) and said.strip():
+                    talk.append(f"[{wolf.name}] {said.strip()}")
+        self.state.wolf_log.extend(f"Night {self.state.day_number}: {line}" for line in talk)
+        return talk
 
     def _witch_decision(self, alive: List[PlayerProfile], victim: Optional[PlayerProfile]
                         ) -> Tuple[bool, Optional[PlayerProfile]]:

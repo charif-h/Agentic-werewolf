@@ -77,6 +77,7 @@ class GameState(BaseModel):
     eliminated_players: List[str] = Field(default_factory=list)  # Player IDs
     night_actions: dict = Field(default_factory=dict)
     game_log: List[str] = Field(default_factory=list)
+    wolf_log: List[str] = Field(default_factory=list)   # private talk of the werewolves, never in the public log
     discussions: List[Discussion] = Field(default_factory=list)  # Store all discussions for context
     witch_heal_used: bool = False
     witch_poison_used: bool = False

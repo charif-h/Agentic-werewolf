@@ -169,6 +169,25 @@ Candidates: {', '.join(candidates)}
 Pick the player you find most suspicious, the way your personality would. {TARGET_ANSWER_FORMAT}"""
 
 
+def wolf_chat_prompt(name: str, mates: List[str], targets: List[str], talk: List[str],
+                     knowledge: Optional[List[str]] = None) -> str:
+    """Ask a werewolf what to tell the pack before the pack chooses tonight's victim"""
+    heard = "\n".join(talk) if talk else "Nobody has spoken yet: open the talk."
+    return f"""It is night. You are {name}, a werewolf. Your pack: {', '.join(mates)}. Nobody else can hear you.
+{knowledge_block(knowledge)}
+Choose tonight's victim together. Possible victims: {', '.join(targets)}.
+
+Pack talk so far:
+{heard}
+
+Say in one or two short sentences who the pack should kill and why. {DISCUSSION_ANSWER_FORMAT}"""
+
+
+def pack_talk_block(talk: List[str]) -> str:
+    """The private talk of the pack, put before the night question of a werewolf ('' without talk)"""
+    return ("Your pack's private talk tonight:\n" + "\n".join(talk) + "\n\n") if talk else ""
+
+
 def witch_prompt(victim: Optional[str], can_save: bool, can_poison: bool,
                  poison_targets: List[str]) -> str:
     """Ask the witch what she does tonight"""

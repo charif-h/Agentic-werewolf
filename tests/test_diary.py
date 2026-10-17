@@ -264,7 +264,7 @@ def test_the_header_survives_when_the_older_entries_are_cut(monkeypatch):
                         lambda: type("S", (), {"diary_prompt_entries": 6, "diary_token_budget": 200})())
     lines = agent._knowledge_with_notes()
     assert "Your diary, first page: I am a villager." in lines
-    assert "Your diary, first page: My fellow werewolves are Bob." in lines
+    assert "Your diary, first page: My fellow werewolves are Bob. I must hide it." in lines
     shown = [line for line in lines if line.startswith("Day ")]
     assert shown and shown[0].startswith("Day 7") and len(shown) < 6          # newest first, oldest cut
 

@@ -82,6 +82,7 @@ async def get_game_state(game_id: str, log_limit: int = Query(200, ge=1, le=2000
         "day_number": game_state.day_number,
         "players": [serialize_player(p) for p in game_state.players],
         "game_log": game_state.game_log[-log_limit:],
+        **({"wolf_log": game_state.wolf_log[-log_limit:]} if get_settings().reveal_roles else {}),
         "roles_revealed": get_settings().reveal_roles,  # REVEAL_ROLES: living players' roles are in `players`
         "llm": session.game.metrics.snapshot(),  # model calls, tokens and time of this game
     }
