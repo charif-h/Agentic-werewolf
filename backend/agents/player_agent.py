@@ -59,13 +59,14 @@ class PlayerAgent:
             self.knowledge,
         )
 
-    def _prepare_messages(self, system_prompt: str, user_message: str) -> list:
+    def _prepare_messages(self, system_prompt: str, user_message: str, use_memory: bool = True) -> list:
         """
         Prepare messages for LLM ensuring a proper alternating conversation format
 
         Args:
             system_prompt: System prompt
             user_message: Current user message
+            use_memory: False to leave out what was asked before (first message of a day)
 
         Returns:
             List of messages in proper format
@@ -73,7 +74,8 @@ class PlayerAgent:
         messages = [Message(SYSTEM, system_prompt)]
 
         # Add recent memory ensuring alternating User/Assistant pattern
-        recent_memory = self.memory[-get_settings().memory_messages:] if get_settings().memory_messages else []
+        limit = get_settings().memory_messages
+        recent_memory = self.memory[-limit:] if use_memory and limit else []
 
         # Ensure we don't have consecutive messages of the same type
         if recent_memory:
@@ -95,14 +97,14 @@ class PlayerAgent:
         return messages
 
     def _ask(self, system_prompt: str, context: str, schema: Dict[str, Any],
-             max_tokens: int) -> Optional[str]:
+             max_tokens: int, use_memory: bool = True) -> Optional[str]:
         """
         Send a question and ask for JSON matching `schema`
 
         Returns:
             The raw answer, or None if the model could not be reached
         """
-        messages = self._prepare_messages(system_prompt, context)
+        messages = self._prepare_messages(system_prompt, context, use_memory)
         try:
             return self.llm.generate(messages, json_schema=schema, max_tokens=max_tokens)
         except Exception as e:
@@ -263,13 +265,14 @@ class PlayerAgent:
             metrics.add_psytest(bool(check.flagged))
         return check
 
-    def discuss(self, conversation_history: str, alive_players: list[str]) -> str:
+    def discuss(self, conversation_history: str, alive_players: list[str], scene: str = "") -> str:
         """
         Generate a strategic comment based on conversation history and role
 
         Args:
             conversation_history: Complete conversation so far
             alive_players: List of alive player names
+            scene: Where the village is (see `prompts.scene_block`), put on top of the prompt
 
         Returns:
             What the player says, or "no comment" if they stay silent
@@ -279,26 +282,33 @@ class PlayerAgent:
             self.profile.name, conversation_history, alive_players, self.profile.role.value,
             self.handler.discussion_strategy,
             self._should_respond_to_conversation(conversation_history),
-            self._knowledge_with_notes(),
+            self._knowledge_with_notes(), scene,
         )
 
-        reply = self._speak(context)
+        # The first message of a day starts without the player's earlier answers: they feed
+        # the feeling of continuing a talk that never happened
+        opening = not conversation_history.strip()
+        reply = self._speak(context, use_memory=not opening)
+        if opening and reply and prompts.refers_to_earlier_talk(reply):
+            # Nobody has spoken, yet the line refers to an earlier exchange: ask once more
+            self._note_opening_backreference()
+            reply = self._speak(context + prompts.BACKREFERENCE_REMINDER, use_memory=False)
         if reply and prompts.leaks_own_role(reply, self.profile.role.value):
             # Ask once more, with a reminder; give up (stay silent) if it happens again
             self._note_role_leak()
-            reply = self._speak(context + prompts.LEAK_REMINDER)
+            reply = self._speak(context + prompts.LEAK_REMINDER, use_memory=not opening)
             if reply and prompts.leaks_own_role(reply, self.profile.role.value):
                 self._note_role_leak()
                 reply = ""
         return reply or prompts.NO_COMMENT
 
-    def _speak(self, context: str) -> str:
+    def _speak(self, context: str, use_memory: bool = True) -> str:
         """One attempt at a discussion answer; '' when silent, unclear or unreachable"""
         system_prompt = prompts.short_reply_system_prompt(
             self.profile.name, self.profile.personality.summary()
         )
         parsed = schemas.parse_discussion(
-            self._ask(system_prompt, context, schemas.discussion_schema(), SPEECH_TOKENS)
+            self._ask(system_prompt, context, schemas.discussion_schema(), SPEECH_TOKENS, use_memory)
         )
         if parsed is None:
             self._note_invalid_answer()
@@ -329,13 +339,14 @@ class PlayerAgent:
         return prompts.response_factors(self.profile.name, conversation_history,
                                         self.handler.response_hint)
 
-    def vote(self, conversation_history: str, alive_players: list[str]) -> str:
+    def vote(self, conversation_history: str, alive_players: list[str], scene: str = "") -> str:
         """
         Make an independent voting decision based on strategic analysis
 
         Args:
             conversation_history: Complete conversation from discussion phase
             alive_players: List of all alive players who can be voted for
+            scene: Where the village is (see `prompts.scene_block`), put on top of the prompt
 
         Returns:
             Name of the player to vote for (always one of the other alive players)
@@ -348,7 +359,7 @@ class PlayerAgent:
 
         context = prompts.vote_prompt(
             self.profile.name, self.profile.role.value, self.handler.voting_strategy,
-            self._fit_conversation(conversation_history), other_players, self._knowledge_with_notes(),
+            self._fit_conversation(conversation_history), other_players, self._knowledge_with_notes(), scene,
         )
         system_prompt = prompts.short_reply_system_prompt(
             self.profile.name, self.profile.personality.summary()
@@ -367,6 +378,12 @@ class PlayerAgent:
         metrics = current_metrics()
         if metrics is not None:
             metrics.add_invalid_answer()
+
+    @staticmethod
+    def _note_opening_backreference() -> None:
+        metrics = current_metrics()
+        if metrics is not None:
+            metrics.add_opening_backreference()
 
     @staticmethod
     def _note_role_leak() -> None:

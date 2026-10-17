@@ -38,6 +38,13 @@ DISCUSSION_EXAMPLES = (
     '- "Something is off about Eli, he has not said a word."'
 )
 
+# Examples for the first message of the day: nobody has said anything yet, so no one can be quoted
+OPENER_EXAMPLES = (
+    '- "Bob is dead. Who was awake last night and heard something?"\n'
+    '- "Two of us could be wolves already. Where was everyone last night?"\n'
+    '- "I saw nothing. Let us hear everybody before we accuse anyone."'
+)
+
 
 def diary_notes(entry: Optional[dict]) -> List[str]:
     """The opinions of a diary entry as lines of private notes for later prompts (empty without entry)"""
@@ -73,7 +80,9 @@ def player_system_prompt(name: str, age: int, sex: str, personality_description:
 
 def short_reply_system_prompt(name: str, personality_summary: str) -> str:
     """Compact persona prompt used for discussion and voting"""
-    return (f"You are {name}, playing Werewolf. Personality (Big Five): {personality_summary}.\n"
+    return (f"You are {name}, playing Werewolf. Your personality (Big Five): {personality_summary}.\n"
+            "Your personality drives everything you say and every choice you make: "
+            "speak and decide the way this person would.\n"
             "Answer like a real person around a table: one or two short sentences, in character. "
             "Name a player when you accuse or defend someone, and give a reason. "
             "Never reveal your own role. No explanations, no stage directions.")
@@ -107,14 +116,30 @@ def response_factors(name: str, conversation: str, role_hint: str) -> str:
     return '\n'.join(factors)
 
 
+def scene_block(day_number: int, announcement: str, alive_names: List[str], spoken: int) -> str:
+    """
+    Where the village is right now: the day, what the narrator announced about the night,
+    who is alive and how many messages were said since the day began (top of discussion and vote prompts)
+    """
+    where = ("You speak first: nobody has said anything today." if spoken == 0
+             else f"{spoken} message{'s' if spoken > 1 else ''} said since the day began.")
+    return (f"Day {day_number}. {announcement}\n"
+            f"Alive players: {', '.join(alive_names)}.\n"
+            f"{where}\n\n")
+
+
+OPENER_INSTRUCTION = ("Open the discussion yourself. Nobody has said anything yet. "
+                      "Do not refer to earlier talk.")
+
+
 def discussion_prompt(name: str, conversation: str, alive_names: List[str], role: str,
                       role_strategy: str, factors: str,
-                      knowledge: Optional[List[str]] = None) -> str:
+                      knowledge: Optional[List[str]] = None, scene: str = "") -> str:
     """Ask a player what to say in the discussion"""
-    return f"""You are {name} in the village discussion.
+    return f"""{scene}You are {name} in the village discussion.
 
 Conversation so far:
-{conversation if conversation.strip() else "Nobody has spoken yet."}
+{conversation if conversation.strip() else OPENER_INSTRUCTION}
 
 Alive players: {', '.join(alive_names)}
 
@@ -124,15 +149,15 @@ Reasons to speak:
 {factors}
 
 Good replies look like this:
-{DISCUSSION_EXAMPLES}
+{DISCUSSION_EXAMPLES if conversation.strip() else OPENER_EXAMPLES}
 
 {DISCUSSION_ANSWER_FORMAT}"""
 
 
 def vote_prompt(name: str, role: str, voting_strategy: str, conversation: str,
-                candidates: List[str], knowledge: Optional[List[str]] = None) -> str:
+                candidates: List[str], knowledge: Optional[List[str]] = None, scene: str = "") -> str:
     """Ask a player who to vote for"""
-    return f"""You are {name}, voting to eliminate someone.
+    return f"""{scene}You are {name}, voting to eliminate someone.
 
 Secret: you are a {role}. {voting_strategy}
 {knowledge_block(knowledge)}
@@ -141,7 +166,7 @@ Conversation:
 
 Candidates: {', '.join(candidates)}
 
-Pick the player you find most suspicious. {TARGET_ANSWER_FORMAT}"""
+Pick the player you find most suspicious, the way your personality would. {TARGET_ANSWER_FORMAT}"""
 
 
 def witch_prompt(victim: Optional[str], can_save: bool, can_poison: bool,
@@ -209,4 +234,19 @@ def leaks_own_role(text: str, role: str) -> bool:
     return re.search(pattern, lowered) is not None
 
 
-LEAK_REMINDER = "\n\n(Do not state your own role. Say it again without revealing it.)"
+BACKREFERENCES = ("as i said", "as i mentioned", "like i said", "like you said", "as you said", "as we said",
+                  "as we discussed", "as discussed", "earlier", "before the break", "we were saying",
+                  "to continue", "going back to", "you said", "you told", "you mentioned", "you claimed",
+                  "you were saying", "your story", "you changed")
+
+
+def refers_to_earlier_talk(text: str) -> bool:
+    """Does `text` refer to an earlier exchange ("as I said", "like you said", "earlier")?"""
+    lowered = text.lower()
+    return any(re.search(rf"\b{re.escape(phrase)}\b", lowered) for phrase in BACKREFERENCES)
+
+
+BACKREFERENCE_REMINDER = ("\n\n(Nobody has spoken yet today. Do not refer to earlier talk. "
+                          "Say it again as the first thing said.)")
+
+LEAK_REMINDER ="\n\n(Do not state your own role. Say it again without revealing it.)"
