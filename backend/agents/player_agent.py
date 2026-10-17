@@ -44,6 +44,7 @@ class PlayerAgent:
         self.llm = llm
         self.memory: List[Message] = []  # Store conversation history
         self.knowledge: List[str] = []  # Secret facts learned during the game
+        self.vote_plan: Optional[Dict[str, Any]] = None   # whom the player planned to vote against today
         self.mates: List[str] = []   # the other werewolves, for a werewolf (set by `set_pack`)
         self._speech_reason = ""   # private reason of the latest discussion answer
         self.last_vote: Optional[str] = None   # whom this player voted for most recently
@@ -344,6 +345,7 @@ class PlayerAgent:
             profile.name, profile.role.value, profile.personality.summary(), step,
             self._fit_conversation(events), others, previous, self.knowledge,
             self.last_vote if step.startswith("Day") else None, mates or None,
+            self.vote_plan if step.startswith("Day") else None,
         )
         system_prompt = prompts.short_reply_system_prompt(profile.name, profile.personality.summary())
         entry = schemas.parse_diary(
@@ -463,9 +465,91 @@ class PlayerAgent:
         return prompts.response_factors(self.profile.name, conversation_history,
                                         self.handler.response_hint)
 
+    def _guard_mates(self, decision, mates, system_prompt, context, schema, parse):
+        """
+        A werewolf must not target a mate unless it is a deliberate sacrifice (`sacrifice_mate` and a
+        reason). A mistake is counted and asked once more; if it happens again the decision is dropped.
+
+        Returns:
+            `(decision or None, tag)`; the tag is "intentional_sacrifice" for a deliberate sacrifice
+        """
+        if decision is None or not mates or decision["target"] not in mates:
+            return decision, None
+        if decision["sacrifice_mate"] and decision["reason"]:
+            self._note_wolf_sacrifice()
+            return decision, "intentional_sacrifice"
+        self._note_wolf_voted_mate()
+        decision = self._ask_decision(system_prompt, context + prompts.MATE_VOTE_REMINDER, schema, parse)
+        if decision is not None and decision["target"] in mates:
+            if decision["sacrifice_mate"] and decision["reason"]:
+                self._note_wolf_sacrifice()
+                return decision, "intentional_sacrifice"
+            return None, None
+        return decision, None
+
+    def _top_suspect(self) -> Optional[str]:
+        """The player the latest diary summary suspects most (None for a werewolf or without suspects)"""
+        last = self._last_summary()
+        rank = {"low": 1, "medium": 2, "high": 3}
+        suspects = [o for o in (last["data"].get("opinions", []) if last else []) if o.get("guess") == "werewolf"]
+        return max(suspects, key=lambda o: rank.get(o.get("confidence"), 0))["player"] if suspects else None
+
+    def plan_vote(self, conversation_history: str, alive_players: list[str], scene: str = "",
+                  step: str = "Day") -> Optional[Dict[str, Any]]:
+        """
+        Decide, before the vote, whom to vote against and why, and write it in the diary as a
+        `plan` entry. The vote then takes this plan as its main input and is checked against it.
+        A villager plans against the top suspect of the diary (or says what changed), a werewolf
+        never against a mate (unless as a deliberate sacrifice).
+
+        Returns:
+            The plan `{"target", "reason", "step"}`, also kept in `self.vote_plan`; None when
+            planning is off or the model gave no usable plan
+        """
+        self.vote_plan = None
+        if not get_settings().vote_plan_enabled:
+            return None
+        others = [p for p in alive_players if p != self.profile.name]
+        if not others:
+            return None
+        mates = [name for name in others if name in self.mates]
+        suspect = None if mates else self._top_suspect()
+        context = prompts.vote_plan_prompt(
+            self.profile.name, self.profile.role.value, self.handler.voting_strategy,
+            self._fit_conversation(conversation_history), others, self._knowledge_with_notes(), scene,
+            mates or None, suspect)
+        system_prompt = prompts.short_reply_system_prompt(self.profile.name, self.profile.personality.summary())
+        schema = schemas.target_schema(others, sacrifice=bool(mates))
+        parse = lambda raw: schemas.parse_decision(raw, others)       # noqa: E731
+        decision = self._ask_decision(system_prompt, context, schema, parse)
+        decision, tag = self._guard_mates(decision, mates, system_prompt, context, schema, parse)
+        if decision is not None and suspect and decision["target"] != suspect:
+            again = self._ask_decision(system_prompt, context + prompts.suspect_reminder(suspect), schema, parse)
+            if again is not None and (again["target"] == suspect or again["reason"]):
+                decision = again               # the top suspect, or a change that is explained
+            else:
+                decision = {**decision, "target": suspect, "reason": decision["reason"] or "my top suspect"}
+        if decision is None:
+            self._note_invalid_answer()
+            return None
+        self.vote_plan = {"target": decision["target"], "reason": decision["reason"], "step": step}
+        metrics = current_metrics()
+        if metrics is not None:
+            metrics.add_vote_plan()
+        if get_settings().diary_enabled:
+            self._add_entry(step, PLAN, f"Today I will vote against {decision['target']} because "
+                            f"{decision['reason'].rstrip('.') or 'my notes say so'}.",
+                            {"target": decision["target"], "reason": decision["reason"], "vote": True,
+                             **({"tag": tag} if tag else {})})
+        return self.vote_plan
+
     def vote(self, conversation_history: str, alive_players: list[str], scene: str = "", step: str = "Day") -> str:
         """
         Make an independent voting decision based on strategic analysis
+
+        With a plan written before the vote (`plan_vote`), the plan is the main input and the vote is
+        checked against it: a different target is asked once more ("vote X, or explain the change");
+        an explained change is kept (and logged as a decision), an unexplained one gives the plan back.
 
         Args:
             conversation_history: Complete conversation from discussion phase
@@ -483,10 +567,11 @@ class PlayerAgent:
             return alive_players[0] if alive_players else ""
 
         mates = [name for name in other_players if name in self.mates]
+        plan = self.vote_plan if self.vote_plan and self.vote_plan["step"] == step else None
         context = prompts.vote_prompt(
             self.profile.name, self.profile.role.value, self.handler.voting_strategy,
             self._fit_conversation(conversation_history), other_players, self._knowledge_with_notes(), scene,
-            mates or None,
+            mates or None, plan,
         )
         system_prompt = prompts.short_reply_system_prompt(
             self.profile.name, self.profile.personality.summary()
@@ -494,20 +579,9 @@ class PlayerAgent:
         schema = schemas.target_schema(other_players, vote=True, sacrifice=bool(mates))
         parse = lambda raw: schemas.parse_decision(raw, other_players)       # noqa: E731
         decision = self._ask_decision(system_prompt, context, schema, parse)
-        tag = None
-        if decision is not None and mates and decision["target"] in mates:
-            if decision["sacrifice_mate"] and decision["reason"]:
-                tag = "intentional_sacrifice"          # a deliberate move, not a mistake
-                self._note_wolf_sacrifice()
-            else:                                      # a mistake: ask once more, then choose among the others
-                self._note_wolf_voted_mate()
-                decision = self._ask_decision(system_prompt, context + prompts.MATE_VOTE_REMINDER, schema, parse)
-                if decision is not None and decision["target"] in mates:
-                    if decision["sacrifice_mate"] and decision["reason"]:
-                        tag = "intentional_sacrifice"
-                        self._note_wolf_sacrifice()
-                    else:
-                        decision = None
+        decision, tag = self._guard_mates(decision, mates, system_prompt, context, schema, parse)
+        if decision is not None and plan and decision["target"] != plan["target"]:
+            decision, tag = self._reconcile_with_plan(decision, tag, plan, mates, system_prompt, context, schema, parse)
         # No valid answer (model down, nonsense): a random candidate keeps votes independent
         if decision is None:
             self._note_invalid_answer()
@@ -516,6 +590,23 @@ class PlayerAgent:
         fallback = [name for name in other_players if name not in mates] or other_players
         self.last_vote = decision["target"] if decision else random.choice(fallback)
         return self.last_vote
+
+    def _reconcile_with_plan(self, decision, tag, plan, mates, system_prompt, context, schema, parse):
+        """The vote differs from the plan: ask once more. Same target: coherent. Another target with a
+        reason: the change is kept (tag "plan_change"). Otherwise the plan wins (an unexplained change)."""
+        metrics = current_metrics()
+        if metrics is not None:
+            metrics.add_diary_vote_mismatch()
+        again = self._ask_decision(system_prompt, context + prompts.plan_reminder(plan["target"]), schema, parse)
+        again, again_tag = self._guard_mates(again, mates, system_prompt, context, schema, parse)
+        if again is not None and again["target"] == plan["target"]:
+            return again, again_tag
+        if again is not None and again["reason"]:
+            return again, again_tag or "plan_change"
+        if metrics is not None:
+            metrics.add_unexplained_change()
+        return {"target": plan["target"], "reason": plan["reason"] or "my plan", "not_chosen": None,
+                "sacrifice_mate": False}, "plan_restored"
 
     @staticmethod
     def _note_invalid_answer() -> None:

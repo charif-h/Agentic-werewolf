@@ -171,16 +171,25 @@ Good replies look like this:
 {DISCUSSION_ANSWER_FORMAT}"""
 
 
+def plan_block(plan: Optional[dict]) -> str:
+    """The plan the player wrote before the vote, as the main input of the vote ('' without plan)"""
+    if not plan:
+        return ""
+    return (f"\nYOUR PLAN, written before the vote: vote against {plan['target']} because {plan['reason'] or 'your notes say so'}.\n"
+            "Follow it, unless something new changed your mind: then say what changed in the reason.\n")
+
+
 def vote_prompt(name: str, role: str, voting_strategy: str, conversation: str,
                 candidates: List[str], knowledge: Optional[List[str]] = None, scene: str = "",
-                mates: Optional[List[str]] = None) -> str:
-    """Ask a player who to vote for (`mates`: the werewolves of the pack of a werewolf, who is not asked to guess them)"""
+                mates: Optional[List[str]] = None, plan: Optional[dict] = None) -> str:
+    """Ask a player who to vote for (`mates`: the werewolves of the pack of a werewolf, who is not asked to guess them;
+    `plan`: what the player decided before the vote)"""
     if mates:
         return f"""{scene}You are {name}, voting to eliminate someone.
 
 Secret: you are a {role}. {voting_strategy}
 Your pack, all werewolves, you know it for sure: {', '.join(mates)}.
-{knowledge_block(knowledge)}
+{knowledge_block(knowledge)}{plan_block(plan)}
 Conversation:
 {conversation if conversation.strip() else "Nobody spoke."}
 
@@ -193,7 +202,7 @@ Say why this player and not the runner-up, the way your personality would.
     return f"""{scene}You are {name}, voting to eliminate someone.
 
 Secret: you are a {role}. {voting_strategy}
-{knowledge_block(knowledge)}
+{knowledge_block(knowledge)}{plan_block(plan)}
 Conversation:
 {conversation if conversation.strip() else "Nobody spoke."}
 
@@ -201,6 +210,50 @@ Candidates: {', '.join(candidates)}
 
 Pick the player you find most suspicious, the way your personality would, and say why him and not the runner-up.
 {VOTE_ANSWER_FORMAT}"""
+
+
+PLAN_ANSWER_FORMAT = 'Answer in JSON: {"reason": "<why him, one or two sentences>", "target": "<name>"}.'
+WOLF_PLAN_ANSWER_FORMAT = ('Answer in JSON: {"reason": "<why him, one or two sentences>", "target": "<name>", '
+                           '"sacrifice_mate": false}.')
+
+
+def vote_plan_prompt(name: str, role: str, voting_strategy: str, conversation: str, candidates: List[str],
+                     knowledge: Optional[List[str]] = None, scene: str = "", mates: Optional[List[str]] = None,
+                     suspect: Optional[str] = None) -> str:
+    """Ask a player to decide, before the vote, whom they will vote against and why (it goes to the diary)"""
+    if mates:
+        side = (f"Your pack, all werewolves, you know it for sure: {', '.join(mates)}.\n"
+                f"{WOLF_VOTE_GOAL}\n"
+                'Planning a vote against a pack member is a rare, costly move: only as a deliberate sacrifice, '
+                'with "sacrifice_mate" true and the reason.\n')
+        candidates = [c for c in candidates if c not in mates]
+        answer = WOLF_PLAN_ANSWER_FORMAT
+    else:
+        side = (f"Your notes say your top suspect is {suspect}: plan your vote against {suspect}, "
+                "unless something new changed your mind (then say what changed).\n") if suspect else ""
+        answer = PLAN_ANSWER_FORMAT
+    return f"""{scene}You are {name}. The vote is about to begin: write your plan in your diary first.
+
+Secret: you are a {role}. {voting_strategy}
+{side}{knowledge_block(knowledge)}
+Conversation:
+{conversation if conversation.strip() else "Nobody spoke."}
+
+Candidates: {', '.join(candidates)}
+
+Decide whom you will vote against and say why, the way your personality would. {answer}"""
+
+
+def suspect_reminder(suspect: str) -> str:
+    """Asks a villager to plan against the top suspect of their notes, or to explain the change"""
+    return (f"\n\n(Your notes say your top suspect is {suspect}. Plan your vote against {suspect}, "
+            "or explain in the reason what changed your mind.)")
+
+
+def plan_reminder(target: str) -> str:
+    """Sent when a vote differs from the plan: vote as planned, or explain the change"""
+    return (f"\n\n(Your notes say you will vote against {target}. Vote {target}, "
+            "or explain in the reason why you changed your mind.)")
 
 
 def wolf_chat_prompt(name: str, mates: List[str], targets: List[str], talk: List[str],
@@ -246,10 +299,15 @@ def hunter_prompt(instruction: str, targets: List[str]) -> str:
 def diary_prompt(name: str, role: str, personality_summary: str, step: str, events: str,
                  others: List[str], previous: Optional[str] = None,
                  knowledge: Optional[List[str]] = None, vote: Optional[str] = None,
-                 mates: Optional[List[str]] = None) -> str:
+                 mates: Optional[List[str]] = None, plan: Optional[dict] = None) -> str:
     """Ask a player to write their private diary entry for the step that just ended
-    (`mates`: the pack of a werewolf, stated as certain and not asked about)"""
+    (`mates`: the pack of a werewolf, stated as certain and not asked about;
+    `plan`: the vote plan of the day, to say what changed between the plan and the vote)"""
     before = f"\nYour last diary entry said: {previous}\n" if previous else ""
+    if plan and vote:
+        same = ("You voted as planned." if plan["target"] == vote else
+                f"You voted for {vote} instead: say what changed and why.")
+        before += f"Your plan before the vote was to vote against {plan['target']} because {plan['reason']}. {same}\n"
     if mates:
         voted = f"\nYou voted to eliminate {vote}: it was a move for the pack, not a belief.\n" if vote else ""
         return f"""You are {name}, writing your private diary. Nobody else reads it, so be honest about what you plan.

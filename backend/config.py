@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     wolf_chat_rounds: int = Field(1, ge=0)          # rounds of private talk of the werewolves before they pick a victim (0 = none)
     discussion_gate: bool = True    # skip the turns of players with nothing pressing to say (saves model calls)
     diary_enabled: bool = True      # each player writes a diary entry after every night and day (one model call each)
+    vote_plan_enabled: bool = True  # before the vote each player writes a plan (whom and why) and the vote is checked against it (one model call each)
     diary_prompt_entries: int = Field(4, ge=0)     # latest diary entries shown in a prompt, besides the role card and the pack
     diary_token_budget: int = Field(300, ge=50)    # most tokens of those entries in one prompt
     psytest_enabled: bool = True    # before the game each player answers a Big Five questionnaire (five model calls each, one per trait); a player who does not behave as described is flagged

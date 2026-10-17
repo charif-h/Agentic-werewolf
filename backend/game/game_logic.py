@@ -499,8 +499,10 @@ class WerewolfGame:
         for player in shuffled_voters:
             reason = None
             try:
-                vote_target = self.player_agents[player.id].vote(full_conversation, candidate_names, scene,
-                                                                  f"Day {self.state.day_number}")
+                agent = self.player_agents[player.id]
+                day = f"Day {self.state.day_number}"
+                agent.plan_vote(full_conversation, candidate_names, scene, day)      # the plan comes first
+                vote_target = agent.vote(full_conversation, candidate_names, scene, day)
                 target = rules.find_player_by_name(self.state, vote_target)
                 if target and target.name in candidate_names and target.name != player.name:
                     votes[player.name] = target.name
