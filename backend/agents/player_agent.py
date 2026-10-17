@@ -11,8 +11,10 @@ import re
 from typing import Optional, Dict, Any, List
 from backend.models.game_models import PlayerProfile
 from backend.llm import ASSISTANT, SYSTEM, USER, LLMClient, Message, fit_text
+from backend.llm.tokens import OMISSION_NOTICE, fit_lines
 from backend.llm import schemas
 from backend.agents import psytest
+from backend.models.diary import DAY_SUMMARY, HEADER_KINDS, NIGHT_SUMMARY, PACK, ROLE_CARD, make_entry
 from backend.models.personality import TRAITS, PersonaCheck
 from backend.config import get_settings
 from backend.llm.metrics import current_metrics
@@ -43,7 +45,7 @@ class PlayerAgent:
         self.memory: List[Message] = []  # Store conversation history
         self.knowledge: List[str] = []  # Secret facts learned during the game
         self.last_vote: Optional[str] = None   # whom this player voted for most recently
-        self.diary: List[Dict[str, Any]] = []  # One entry per night and day, see `write_diary`
+        self.diary: List[Dict[str, Any]] = []  # Typed entries (see `backend.models.diary`): role card, pack, one summary per night and day
 
     @property
     def handler(self):
@@ -164,12 +166,40 @@ class PlayerAgent:
         return self._choose_target(game_state, self.handler.night_prompt(names), names)
 
     def _knowledge_with_notes(self) -> List[str]:
-        """Secret facts plus the opinions of the latest diary entry, so that what the player
-        says and votes follows what they wrote down"""
-        notes = prompts.diary_notes(self.diary[-1] if self.diary else None)
-        if not notes:
-            return self.knowledge
-        return self.knowledge + ["Your private notes after the last night or day:"] + notes
+        """
+        Secret facts plus the diary, in two tiers: "who I am" (role card and pack, never cut) and
+        the latest entries, newest first, within the token budget. The opinions of the latest
+        summary are added so that what the player says and votes follows what they wrote down.
+        """
+        header = [f"Your diary, first page: {e['text']}" for e in self.diary if e["kind"] in HEADER_KINDS]
+        recent = [f"{e['step']}: {e['text']}" for e in self.diary if e["kind"] not in HEADER_KINDS]
+        recent = recent[-max(get_settings().diary_prompt_entries, 0):]
+        lines = [line for line in fit_lines(recent, get_settings().diary_token_budget)
+                 if line != OMISSION_NOTICE]
+        notes = prompts.diary_notes(self._last_summary())
+        if lines:
+            lines = ["Your private diary, newest entry first:"] + lines[::-1]
+        return self.knowledge + header + lines + (
+            ["Your private notes after the last night or day:"] + notes if notes else [])
+
+    def _last_summary(self) -> Optional[Dict[str, Any]]:
+        """The latest night or day summary of the diary, if any"""
+        return next((e for e in reversed(self.diary) if e["kind"] in (NIGHT_SUMMARY, DAY_SUMMARY)), None)
+
+    def _add_entry(self, step: str, kind: str, text: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Append a typed entry to the diary"""
+        entry = make_entry(len(self.diary) + 1, step, kind, text, data)
+        self.diary.append(entry)
+        return entry
+
+    def write_role_card(self) -> Dict[str, Any]:
+        """The first diary entry: the role the player was given (no model call, the role is known)"""
+        role = self.profile.role.value
+        return self._add_entry("Role card", ROLE_CARD, f"I am a {role}.", {"role": role})
+
+    def write_pack(self, mates: List[str]) -> Dict[str, Any]:
+        """Note the other members of the pack (the werewolves) in the diary"""
+        return self._add_entry("Pack", PACK, f"My fellow werewolves are {', '.join(mates)}.", {"mates": mates})
 
     def add_knowledge(self, fact: str) -> None:
         """Remember a secret fact (e.g. the seer's findings); it appears in later prompts"""
@@ -221,7 +251,8 @@ class PlayerAgent:
         if not others:
             return None
         profile = self.profile
-        previous = self.diary[-1]["summary"] if self.diary else None
+        last = self._last_summary()
+        previous = last["text"] if last else None
         context = prompts.diary_prompt(
             profile.name, profile.role.value, profile.personality.summary(), step,
             self._fit_conversation(events), others, previous, self.knowledge,
@@ -233,9 +264,8 @@ class PlayerAgent:
         if entry is None:
             self._note_invalid_answer()
             return None
-        entry["step"] = step
-        self.diary.append(entry)
-        return entry
+        return self._add_entry(step, NIGHT_SUMMARY if step.startswith("Night") else DAY_SUMMARY,
+                               entry["summary"], {"opinions": entry["opinions"]})
 
     def take_psytest(self) -> PersonaCheck:
         """
