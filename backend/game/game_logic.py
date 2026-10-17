@@ -9,6 +9,7 @@ import logging
 import random
 from datetime import datetime
 from typing import Callable, List, Dict, Optional, Tuple
+from backend import prompts
 from backend.config import get_settings
 from backend.engine import rules
 from backend.roles import WEREWOLVES, get_handler, night_handlers
@@ -47,6 +48,7 @@ class WerewolfGame:
         self.metrics = LLMMetrics()      # model calls made for this game
         self._night_start = 0            # index in the game log where the current night began
         self._day_start = 0              # ... and the current day
+        self._day_announcement = ""      # what the narrator said when the day began
         # Optional callback(event_type, data) for live progress (player_spoke, vote_cast);
         # it is called from whatever thread plays the phase
         self.on_event: Optional[Callable[[str, dict], None]] = None
@@ -270,8 +272,14 @@ class WerewolfGame:
             self.state.day_number, rules.describe_night(self.state)
         )
         self.state.game_log.append(f"[GAME MASTER] {announcement}")
+        self._day_announcement = announcement
 
         return announcement
+
+    def _scene(self, spoken: int) -> str:
+        """Scene header of the discussion and vote prompts (day, announcement, alive, messages said)"""
+        alive_names = [p.name for p in rules.alive_players(self.state)]
+        return prompts.scene_block(self.state.day_number, self._day_announcement, alive_names, spoken)
 
     def write_diaries(self, night: bool) -> None:
         """
@@ -351,7 +359,7 @@ class WerewolfGame:
                     agent = self.player_agents[player.id]
 
                     # Give each player the updated conversation to consider responding
-                    comment = agent.discuss(current_conversation, alive_names)
+                    comment = agent.discuss(current_conversation, alive_names, self._scene(len(discussion.messages)))
 
                     # Filter out "no comment" responses
                     spoken = bool(comment and comment.strip() and comment.strip().lower() != "no comment")
@@ -426,6 +434,8 @@ class WerewolfGame:
         else:
             full_conversation = "No discussion took place this phase."
 
+        scene = self._scene(len(self.state.discussions[-1].messages) if self.state.discussions else 0)
+
         # Shuffle voting order to prevent influence
         shuffled_voters = alive_players.copy()
         random.shuffle(shuffled_voters)
@@ -434,7 +444,7 @@ class WerewolfGame:
         for player in shuffled_voters:
             reason = None
             try:
-                vote_target = self.player_agents[player.id].vote(full_conversation, candidate_names)
+                vote_target = self.player_agents[player.id].vote(full_conversation, candidate_names, scene)
                 target = rules.find_player_by_name(self.state, vote_target)
                 if target and target.name in candidate_names and target.name != player.name:
                     votes[player.name] = target.name

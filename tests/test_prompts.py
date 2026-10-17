@@ -49,7 +49,7 @@ def test_response_factors():
 
 def test_discussion_prompt_asks_for_speech_not_for_permission():
     d = prompts.discussion_prompt("Ann", "", ["Ann", "Bob"], "seer", "STRATEGY", "FACTORS")
-    assert "Nobody has spoken yet." in d and "Secret: you are a seer. STRATEGY" in d and "FACTORS" in d
+    assert "Open the discussion yourself" in d and "Secret: you are a seer. STRATEGY" in d and "FACTORS" in d
     assert "Good replies look like this" in d and d.count('- "') == 3          # few-shot examples
     assert d.rstrip().endswith("never curly ones.")
     assert 'answer {"speak": false, "message": ""}.' in d

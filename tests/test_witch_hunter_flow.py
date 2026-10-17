@@ -54,6 +54,7 @@ def make_game(roles):
         agent.night_action.return_value = None
     game.game_master = WerewolfGame.__init__.__globals__["GameMaster"]()
     game.state.day_number = 1
+    game._day_announcement = ""
     return game
 
 

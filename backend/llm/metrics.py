@@ -17,7 +17,7 @@ class LLMMetrics:
             self._data = {"calls": 0, "errors": 0, "prompt_tokens": 0, "completion_tokens": 0,
                           "seconds": 0.0, "generation_seconds": 0.0, "load_seconds": 0.0,
                           "wait_seconds": 0.0, "skipped_turns": 0,
-                          "invalid_answers": 0, "role_leaks": 0, "repeated_lines": 0,
+                          "invalid_answers": 0, "role_leaks": 0, "repeated_lines": 0, "opening_backreference": 0,
                           "psytests": 0, "psytest_flagged": 0}
 
     def add_call(self, seconds: float, wait_seconds: float = 0.0,
@@ -56,6 +56,11 @@ class LLMMetrics:
         """Count a discussion line dropped because it only repeated what was just said"""
         with self._lock:
             self._data["repeated_lines"] += 1
+
+    def add_opening_backreference(self) -> None:
+        """Count an opening line that referred to an earlier exchange although nobody had spoken"""
+        with self._lock:
+            self._data["opening_backreference"] += 1
 
     def add_psytest(self, flagged: bool) -> None:
         """Count a completed psychological test, and whether the player was flagged"""
