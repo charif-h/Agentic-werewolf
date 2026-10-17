@@ -25,10 +25,19 @@ def fit_to_schema(text: str, json_schema: Dict[str, Any]) -> str:
     properties = json_schema.get("properties", {})
     reply = text.strip()
     if "target" in properties:
-        return json.dumps({"target": reply.strip("\"'`.,;:!* ")})
+        target = reply.strip("\"'`.,;:!* ")
+        answer = {"reason": "My reason.", "target": target}
+        if "not_chosen" in properties:
+            others = [n for n in properties["target"].get("enum", []) if n.lower() != target.lower()]
+            if others:
+                answer["not_chosen"] = {"player": others[0], "why_not": "Less suspicious."}
+        if "sacrifice_mate" in properties:
+            answer["sacrifice_mate"] = False
+        return json.dumps(answer if "reason" in properties else {"target": target})
     if "speak" in properties:
         silent = not reply or reply.lower().strip(". ") == "no comment"
-        return json.dumps({"speak": not silent, "message": "" if silent else reply})
+        answer = {"speak": not silent, "message": "" if silent else reply}
+        return json.dumps({"reason": "My reason.", **answer} if "reason" in properties else answer)
     if "opinions" in properties:
         names = properties["opinions"]["items"]["properties"]["player"]["enum"]
         return json.dumps({"summary": reply or "Nothing clear yet.", "opinions": [
@@ -44,7 +53,8 @@ def fit_to_schema(text: str, json_schema: Dict[str, Any]) -> str:
             for name in properties["poison"].get("enum", []):
                 if name.lower() == found.group(1).lower():
                     poison = name
-        return json.dumps({"save": save, "poison": poison})
+        answer = {"save": save, "poison": poison}
+        return json.dumps({"reason": "My reason.", **answer} if "reason" in properties else answer)
     return text
 
 

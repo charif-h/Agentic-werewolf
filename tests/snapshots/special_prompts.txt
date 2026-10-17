@@ -21,7 +21,7 @@ Recent events: ['Hal was killed.']
 Recent discussion:
 [Bob] hello
 
-As the witch, the werewolves attacked Dee tonight. Your options: poison: kill one player among Bob, Cy, Dee, Eli; or do nothing. Answer in JSON: {"save": true or false, "poison": "<name>" or "none"}. Use true / a name only for a potion you still have.
+As the witch, the werewolves attacked Dee tonight. Your options: poison: kill one player among Bob, Cy, Dee, Eli; or do nothing. Answer in JSON: {"reason": "<why, one short sentence>", "save": true or false, "poison": "<name>" or "none"}. Use true / a name only for a potion you still have.
 
 ======================================================================
 ### hunter's last shot
@@ -43,7 +43,7 @@ Recent events: ['Hal was killed.']
 Recent discussion:
 [Bob] hello
 
-You have just been eliminated. As the hunter, shoot one player with your last breath from these players: Bob, Cy, Dee, Eli. Answer in JSON: {"target": "<name>"}.
+You have just been eliminated. As the hunter, shoot one player with your last breath from these players: Bob, Cy, Dee, Eli. Answer in JSON: {"reason": "<why, one short sentence>", "target": "<name>"}.
 
 ======================================================================
 ### seer who knows something (discussion)
@@ -79,4 +79,4 @@ Good replies look like this:
 - "I trust Bob. He stayed with us all night."
 - "Something is off about Eli, he has not said a word."
 
-Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
+Answer in JSON: {"reason": "<why you say this, private: nobody hears it>", "speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"reason": "<why>", "speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.

@@ -28,7 +28,7 @@ Good replies look like this:
 - "I trust Bob. He stayed with us all night."
 - "Something is off about Eli, he has not said a word."
 
-Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
+Answer in JSON: {"reason": "<why you say this, private: nobody hears it>", "speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"reason": "<why>", "speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
 
 ======================================================================
 ### hunter
@@ -61,7 +61,7 @@ Good replies look like this:
 - "I trust Bob. He stayed with us all night."
 - "Something is off about Eli, he has not said a word."
 
-Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
+Answer in JSON: {"reason": "<why you say this, private: nobody hears it>", "speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"reason": "<why>", "speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
 
 ======================================================================
 ### seer
@@ -94,7 +94,7 @@ Good replies look like this:
 - "I trust Bob. He stayed with us all night."
 - "Something is off about Eli, he has not said a word."
 
-Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
+Answer in JSON: {"reason": "<why you say this, private: nobody hears it>", "speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"reason": "<why>", "speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
 
 ======================================================================
 ### villager
@@ -127,7 +127,7 @@ Good replies look like this:
 - "I trust Bob. He stayed with us all night."
 - "Something is off about Eli, he has not said a word."
 
-Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
+Answer in JSON: {"reason": "<why you say this, private: nobody hears it>", "speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"reason": "<why>", "speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
 
 ======================================================================
 ### werewolf
@@ -160,7 +160,7 @@ Good replies look like this:
 - "I trust Bob. He stayed with us all night."
 - "Something is off about Eli, he has not said a word."
 
-Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
+Answer in JSON: {"reason": "<why you say this, private: nobody hears it>", "speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"reason": "<why>", "speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
 
 ======================================================================
 ### witch
@@ -193,4 +193,4 @@ Good replies look like this:
 - "I trust Bob. He stayed with us all night."
 - "Something is off about Eli, he has not said a word."
 
-Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.
+Answer in JSON: {"reason": "<why you say this, private: nobody hears it>", "speak": true, "message": "<what you say out loud, one or two short sentences>"}. If you really have nothing to add, answer {"reason": "<why>", "speak": false, "message": ""}. Write the JSON with plain straight quotes and apostrophes, never curly ones.

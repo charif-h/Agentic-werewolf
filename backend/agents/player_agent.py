@@ -14,7 +14,7 @@ from backend.llm import ASSISTANT, SYSTEM, USER, LLMClient, Message, fit_text
 from backend.llm.tokens import OMISSION_NOTICE, fit_lines
 from backend.llm import schemas
 from backend.agents import psytest
-from backend.models.diary import DAY_SUMMARY, HEADER_KINDS, NIGHT_SUMMARY, PACK, PLAN, ROLE_CARD, make_entry
+from backend.models.diary import DAY_SUMMARY, HEADER_KINDS, DECISION, NIGHT_SUMMARY, PACK, PLAN, ROLE_CARD, make_entry
 from backend.models.personality import TRAITS, PersonaCheck
 from backend.config import get_settings
 from backend.llm.metrics import current_metrics
@@ -23,10 +23,10 @@ from backend.roles import get_handler
 
 logger = logging.getLogger(__name__)
 
-DECISION_TOKENS = 60      # a JSON object holding a name
+DECISION_TOKENS = 160     # a JSON object holding a reason and a name
 DIARY_TOKENS = 600         # a summary and one opinion per other player
 PSYTEST_TOKENS = 400      # six statements with their ratings, as JSON
-SPEECH_TOKENS = 160       # a JSON object holding one or two sentences
+SPEECH_TOKENS = 200       # a JSON object holding a private reason and one or two sentences
 
 
 class PlayerAgent:
@@ -44,6 +44,7 @@ class PlayerAgent:
         self.llm = llm
         self.memory: List[Message] = []  # Store conversation history
         self.knowledge: List[str] = []  # Secret facts learned during the game
+        self._speech_reason = ""   # private reason of the latest discussion answer
         self.last_vote: Optional[str] = None   # whom this player voted for most recently
         self.diary: List[Dict[str, Any]] = []  # Typed entries (see `backend.models.diary`): role card, pack, one summary per night and day
 
@@ -113,17 +114,57 @@ class PlayerAgent:
             logger.warning("%s: model call failed: %s", self.profile.name, e)
             return None
 
-    def _ask_in_game(self, game_state: Dict[str, Any], action: str, schema: Dict[str, Any]) -> Optional[str]:
-        """Ask a question that needs the game state (night actions, witch, hunter)"""
+    def _game_context(self, game_state: Dict[str, Any], action: str) -> str:
+        """The game state followed by a question that needs it (night actions, witch, hunter)"""
         alive_names = [p.get('name') for p in game_state.get('players', [])
                        if p.get('status') == 'alive']
         discussion_history = game_state.get('discussion_history', [])
         window = get_settings().discussion_context_messages
-        context = prompts.game_context(
+        return prompts.game_context(
             game_state.get('phase', 'unknown'), game_state.get('day_number', 0), alive_names,
             game_state.get('recent_events', 'None'), discussion_history[-window:], action,
         )
-        return self._ask(self._build_system_prompt(), context, schema, DECISION_TOKENS)
+
+    @staticmethod
+    def _step_of(game_state: Dict[str, Any]) -> str:
+        """Diary step of a decision taken in `game_state`: "Night 2", "Day 1" """
+        return f"{'Night' if game_state.get('phase') == 'night' else 'Day'} {game_state.get('day_number', 0)}"
+
+    def _ask_decision(self, system_prompt: str, context: str, schema: Dict[str, Any], parse,
+                      tokens: int = DECISION_TOKENS, use_memory: bool = True) -> Optional[Dict[str, Any]]:
+        """
+        Ask for a decision and its reason. `parse(raw)` gives a dict with a "reason", or None when the
+        answer is unusable. An unusable answer, or one without a reason, is asked once more; a valid
+        decision that still has no reason is kept (and counted) rather than replaced by chance.
+        """
+        decision = parse(self._ask(system_prompt, context, schema, tokens, use_memory))
+        if decision is None or not decision["reason"]:
+            again = parse(self._ask(system_prompt, context + prompts.REASON_REMINDER, schema, tokens, use_memory))
+            if again is not None and (decision is None or again["reason"]):
+                decision = again
+        if decision is not None and not decision["reason"]:
+            metrics = current_metrics()
+            if metrics is not None:
+                metrics.add_missing_reason()
+        return decision
+
+    def _record_decision(self, step: str, label: str, decision: Dict[str, Any], kind: str,
+                         tag: Optional[str] = None) -> None:
+        """
+        Write the reason of a decision in the diary right away (no model call), e.g.
+        "My vote: Bob. Why: he dodges every question. Why not Cy: he helped me."
+        """
+        if not get_settings().diary_enabled:
+            return
+        text = f"{label}. Why: {decision['reason'] or 'no reason given'}"
+        not_chosen = decision.get("not_chosen")
+        if not_chosen:
+            text += f" Why not {not_chosen['player']}: {not_chosen['why_not']}"
+        data = {key: decision[key] for key in ("target", "reason", "not_chosen") if key in decision}
+        data["decision"] = kind
+        if tag:
+            data["tag"] = tag
+        self._add_entry(step, DECISION, text, data)
 
     def _remember(self, question: str, answer: str) -> None:
         """
@@ -139,14 +180,21 @@ class PlayerAgent:
         """Keep the most recent part of the conversation that fits the token budget"""
         return fit_text(conversation, get_settings().conversation_token_budget)
 
-    def _choose_target(self, game_state: Dict[str, Any], action: str, names: List[str]) -> Optional[str]:
-        """Ask for one of `names`; None if the model failed or answered nonsense"""
-        raw = self._ask_in_game(game_state, action, schemas.target_schema(names))
-        target = schemas.parse_target(raw, names) if names else None
-        if target:
-            self._remember(action, target)
-        elif names:
+    def _choose_target(self, game_state: Dict[str, Any], action: str, names: List[str],
+                       label: str, kind: str) -> Optional[str]:
+        """Ask for one of `names` and a reason (written in the diary); None if the model failed or
+        answered nonsense"""
+        if not names:
+            return None
+        decision = self._ask_decision(
+            self._build_system_prompt(), self._game_context(game_state, action),
+            schemas.target_schema(names), lambda raw: schemas.parse_decision(raw, names))
+        if decision is None:
             self._note_invalid_answer()
+            return None
+        target = decision["target"]
+        self._remember(action, target)
+        self._record_decision(self._step_of(game_state), f"{label}: {target}", decision, kind)
         return target
 
     def night_action(self, game_state: Dict[str, Any]) -> Optional[str]:
@@ -164,7 +212,7 @@ class PlayerAgent:
             return None
         names = game_state.get('valid_targets', [])
         action = prompts.pack_talk_block(game_state.get('wolf_chat', [])) + self.handler.night_prompt(names)
-        return self._choose_target(game_state, action, names)
+        return self._choose_target(game_state, action, names, "My night choice", "night")
 
     def wolf_chat(self, talk: List[str], mates: List[str], targets: List[str]) -> str:
         """What a werewolf tells the pack before the victim is chosen ('' when silent or unclear)"""
@@ -232,12 +280,17 @@ class PlayerAgent:
             no longer has, and unclear answers, give "PASS" (a potion is never used at random).
         """
         action = prompts.witch_prompt(victim, can_save, can_poison, poison_targets)
-        raw = self._ask_in_game(game_state, action, schemas.witch_schema(poison_targets))
-        decision = schemas.parse_witch(raw, poison_targets)
+        def parse(raw):
+            found = schemas.parse_witch(raw, poison_targets)
+            return None if found is None else {"save": found[0], "poison": found[1],
+                                               "reason": schemas.parse_reason(raw)}
+
+        decision = self._ask_decision(self._build_system_prompt(), self._game_context(game_state, action),
+                                      schemas.witch_schema(poison_targets), parse)
         if decision is None:
             self._note_invalid_answer()
             return "PASS"
-        save, poison = decision
+        save, poison = decision["save"], decision["poison"]
         parts = []
         if save and can_save:
             parts.append("SAVE")
@@ -245,12 +298,13 @@ class PlayerAgent:
             parts.append(f"POISON {poison}")
         answer = " and ".join(parts) or "PASS"
         self._remember(action, answer)
+        self._record_decision(self._step_of(game_state), f"My potion decision: {answer}", decision, "witch")
         return answer
 
     def hunter_shot(self, game_state: Dict[str, Any], targets: List[str]) -> Optional[str]:
         """Ask the dying hunter whom to shoot; None if the model gave no valid answer"""
         action = prompts.hunter_prompt(self.handler.death_shot_instruction, targets)
-        return self._choose_target(game_state, action, targets)
+        return self._choose_target(game_state, action, targets, "My last shot", "hunter")
 
     def write_diary(self, step: str, events: str, others: List[str]) -> Optional[Dict[str, Any]]:
         """
@@ -312,7 +366,7 @@ class PlayerAgent:
             metrics.add_psytest(bool(check.flagged))
         return check
 
-    def discuss(self, conversation_history: str, alive_players: list[str], scene: str = "") -> str:
+    def discuss(self, conversation_history: str, alive_players: list[str], scene: str = "", step: str = "Day") -> str:
         """
         Generate a strategic comment based on conversation history and role
 
@@ -320,6 +374,7 @@ class PlayerAgent:
             conversation_history: Complete conversation so far
             alive_players: List of alive player names
             scene: Where the village is (see `prompts.scene_block`), put on top of the prompt
+            step: Diary step ("Day 2") a line that names a player is justified under
 
         Returns:
             What the player says, or "no comment" if they stay silent
@@ -347,6 +402,11 @@ class PlayerAgent:
             if reply and prompts.leaks_own_role(reply, self.profile.role.value):
                 self._note_role_leak()
                 reply = ""
+        if reply and self._speech_reason and any(
+                re.search(rf"(?<!\w){re.escape(other)}(?!\w)", reply) for other in alive_players
+                if other != self.profile.name):
+            # A line that accuses or defends someone: the private reason goes to the diary
+            self._record_decision(step, f'I said: "{reply}"', {"reason": self._speech_reason}, "speech")
         return reply or prompts.NO_COMMENT
 
     def _speak(self, context: str, use_memory: bool = True) -> str:
@@ -354,9 +414,9 @@ class PlayerAgent:
         system_prompt = prompts.short_reply_system_prompt(
             self.profile.name, self.profile.personality.summary()
         )
-        parsed = schemas.parse_discussion(
-            self._ask(system_prompt, context, schemas.discussion_schema(), SPEECH_TOKENS, use_memory)
-        )
+        raw = self._ask(system_prompt, context, schemas.discussion_schema(), SPEECH_TOKENS, use_memory)
+        parsed = schemas.parse_discussion(raw)
+        self._speech_reason = schemas.parse_reason(raw)
         if parsed is None:
             self._note_invalid_answer()
             return ""
@@ -386,7 +446,7 @@ class PlayerAgent:
         return prompts.response_factors(self.profile.name, conversation_history,
                                         self.handler.response_hint)
 
-    def vote(self, conversation_history: str, alive_players: list[str], scene: str = "") -> str:
+    def vote(self, conversation_history: str, alive_players: list[str], scene: str = "", step: str = "Day") -> str:
         """
         Make an independent voting decision based on strategic analysis
 
@@ -394,6 +454,7 @@ class PlayerAgent:
             conversation_history: Complete conversation from discussion phase
             alive_players: List of all alive players who can be voted for
             scene: Where the village is (see `prompts.scene_block`), put on top of the prompt
+            step: Diary step ("Day 2") the vote is justified under
 
         Returns:
             Name of the player to vote for (always one of the other alive players)
@@ -411,12 +472,15 @@ class PlayerAgent:
         system_prompt = prompts.short_reply_system_prompt(
             self.profile.name, self.profile.personality.summary()
         )
-        raw = self._ask(system_prompt, context, schemas.target_schema(other_players), DECISION_TOKENS)
+        decision = self._ask_decision(
+            system_prompt, context, schemas.target_schema(other_players, vote=True),
+            lambda raw: schemas.parse_decision(raw, other_players))
         # No valid answer (model down, nonsense): a random candidate keeps votes independent
-        target = schemas.parse_target(raw, other_players)
-        if target is None:
+        if decision is None:
             self._note_invalid_answer()
-        self.last_vote = target or random.choice(other_players)
+        else:
+            self._record_decision(step, f"My vote: {decision['target']}", decision, "vote")
+        self.last_vote = decision["target"] if decision else random.choice(other_players)
         return self.last_vote
 
     @staticmethod

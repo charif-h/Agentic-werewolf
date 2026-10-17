@@ -12,21 +12,42 @@ from typing import Any, Dict, Iterable, Optional, Tuple
 NONE = "none"
 
 
-def target_schema(names: Iterable[str]) -> Dict[str, Any]:
-    """`{"target": <one of names>}`; without names any string is accepted"""
+def target_schema(names: Iterable[str], vote: bool = False, sacrifice: bool = False) -> Dict[str, Any]:
+    """
+    `{"reason": str, "target": <one of names>}`; without names any string is accepted
+
+    The reason comes first: the model reasons, then chooses. A `vote` also names the runner-up
+    and why not (`"not_chosen": {"player", "why_not"}`, only when there is another candidate);
+    with `sacrifice` (a werewolf voting) the answer says whether a mate is sacrificed on purpose.
+    """
     names = list(names)
     target: Dict[str, Any] = {"type": "string"}
     if names:
         target["enum"] = names
-    return {"type": "object", "properties": {"target": target}, "required": ["target"]}
+    properties: Dict[str, Any] = {"reason": {"type": "string"}, "target": target}
+    required = ["reason", "target"]
+    if vote and len(names) > 1:
+        properties["not_chosen"] = {
+            "type": "object",
+            "properties": {"player": {"type": "string", "enum": names}, "why_not": {"type": "string"}},
+            "required": ["player", "why_not"],
+        }
+        required.append("not_chosen")
+    if sacrifice:
+        properties["sacrifice_mate"] = {"type": "boolean"}
+        required.append("sacrifice_mate")
+    return {"type": "object", "properties": properties, "required": required}
 
 
 def discussion_schema() -> Dict[str, Any]:
-    """`{"speak": bool, "message": str}`: whether the player talks, and what they say"""
+    """
+    `{"reason": str, "speak": bool, "message": str}`: why the player says it (private), whether
+    they talk, and what they say out loud
+    """
     return {
         "type": "object",
-        "properties": {"speak": {"type": "boolean"}, "message": {"type": "string"}},
-        "required": ["speak", "message"],
+        "properties": {"reason": {"type": "string"}, "speak": {"type": "boolean"}, "message": {"type": "string"}},
+        "required": ["reason", "speak", "message"],
     }
 
 
@@ -77,14 +98,15 @@ def psytest_schema(count: int) -> Dict[str, Any]:
 
 
 def witch_schema(poison_targets: Iterable[str]) -> Dict[str, Any]:
-    """`{"save": bool, "poison": <a name or "none">}`"""
+    """`{"reason": str, "save": bool, "poison": <a name or "none">}`"""
     return {
         "type": "object",
         "properties": {
+            "reason": {"type": "string"},
             "save": {"type": "boolean"},
             "poison": {"type": "string", "enum": list(poison_targets) + [NONE]},
         },
-        "required": ["save", "poison"],
+        "required": ["reason", "save", "poison"],
     }
 
 
@@ -100,6 +122,13 @@ def parse_json(text: Optional[str]) -> Optional[Dict[str, Any]]:
     return data if isinstance(data, dict) else None
 
 
+def parse_reason(text: Optional[str]) -> str:
+    """The `reason` of a decision answer, trimmed ('' when there is none)"""
+    data = parse_json(text)
+    reason = data.get("reason") if data else None
+    return reason.strip() if isinstance(reason, str) else ""
+
+
 def parse_target(text: Optional[str], names: Iterable[str]) -> Optional[str]:
     """The valid name in a `{"target": ...}` answer (spelled as in `names`), or None"""
     data = parse_json(text)
@@ -112,11 +141,33 @@ def parse_target(text: Optional[str], names: Iterable[str]) -> Optional[str]:
     return None
 
 
+def parse_decision(text: Optional[str], names: Iterable[str]) -> Optional[Dict[str, Any]]:
+    """
+    A decision `{"target", "reason", "not_chosen", "sacrifice_mate"}` from a decision answer, or None
+    when the target is not one of `names`. The reason may be empty (the caller asks again);
+    `not_chosen` is `{"player", "why_not"}` or None and `sacrifice_mate` a bool (false when absent).
+    """
+    names = list(names)
+    target = parse_target(text, names)
+    if target is None:
+        return None
+    data = parse_json(text) or {}
+    not_chosen = data.get("not_chosen")
+    if isinstance(not_chosen, dict) and isinstance(not_chosen.get("why_not"), str):
+        player = parse_target(json.dumps({"target": not_chosen.get("player")}), names)
+        not_chosen = ({"player": player, "why_not": not_chosen["why_not"].strip()}
+                      if player and player != target else None)
+    else:
+        not_chosen = None
+    return {"target": target, "reason": parse_reason(text), "not_chosen": not_chosen,
+            "sacrifice_mate": data.get("sacrifice_mate") is True}
+
+
 # Gemma likes typographic quotes: it writes curly apostrophes inside the message and then
 # closes the string with a curly quote too, so the JSON never closes:
 #   {"speak": true, "message": "Bob, it’s odd.”} ...garbage...
 _BROKEN_DISCUSSION = re.compile(
-    r'^\s*\{\s*"speak"\s*:\s*(true|false)\s*,\s*"message"\s*:\s*"(.*?)["“”]\s*\}',
+    r'^\s*\{\s*(?:"reason"\s*:\s*"[^"]*"\s*,\s*)?"speak"\s*:\s*(true|false)\s*,\s*"message"\s*:\s*"(.*?)["“”]\s*\}',
     re.DOTALL)
 
 

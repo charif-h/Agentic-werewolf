@@ -217,3 +217,22 @@ Limits of this benchmark: the quality columns are automatic proxies, not a human
 - *night*: Hal
 - *night*: Bob
 - *night*: Eli
+
+## With reasons and the Big Five personality (milestone M7, issue #79)
+
+Every decision now carries a reason written before the choice (`{"reason": ..., "target": ...}`, a vote also names the runner-up and why not), the personality is the full Big Five description, and the discussion answer has a private `reason`. `DECISION_TOKENS` went from 60 to 160 and `SPEECH_TOKENS` from 160 to 200. Same scenarios and machine, `gemma3:4b` only (the other models were not run), 2 repeats.
+
+| Metric | before (structured output) | now |
+|---|---|---|
+| Seconds per answer | 0.59 | 1.36 |
+| Tokens per second | 76.0 | 73.1 |
+| Average prompt tokens | 246 | 954 |
+| Raw answers that are valid JSON | 97% | 93% |
+| Vote / night target / witch: valid after parsing | 100% | 100% |
+| Discussion: names another player | 95% | 65% |
+| Discussion: identical answers | 0% | 27% |
+| Errors | 0 | 0 |
+
+* **The latency has two causes that this run does not separate**: the prompt is four times longer (the five-trait personality text, not the reasons) and each answer is longer (the reason). Expect about 1.3 s per decision, so a game costs roughly twice as much model time as before. `OLLAMA_NUM_PARALLEL` and a smaller `gemma3:1b` are the levers.
+* **Every decision still parses (100%)**, and an empty reason is asked once more. `missing_reasons` in the game metrics counts the decisions that stay without one.
+* **Identical answers went up** because the scenarios include an empty conversation: the model copies one of the three example replies of the opener ("I saw nothing. Let us hear everybody before we accuse anyone."). Watch `opening_backreference` and the repeated lines in real games before adding more fixed examples.

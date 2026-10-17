@@ -239,7 +239,7 @@ def test_witch_and_hunter_prompts():
     assert "nobody was attacked" in only_pass and "potions are used" in only_pass
     assert "save: use" not in only_pass and "poison: kill" not in only_pass
     assert prompts.hunter_prompt("Shoot", ["Bob", "Cy"]) == (
-        'Shoot from these players: Bob, Cy. Answer in JSON: {"target": "<name>"}.')
+        'Shoot from these players: Bob, Cy. Answer in JSON: {"reason": "<why, one short sentence>", "target": "<name>"}.')
 
 
 def test_agent_remembers_facts_and_uses_them_in_every_prompt():

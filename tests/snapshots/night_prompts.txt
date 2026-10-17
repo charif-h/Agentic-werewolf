@@ -17,7 +17,7 @@ Recent events: ['Hal was killed.']
 Recent discussion:
 [Bob] hello
 
-As the guard, choose a player to protect tonight from these players: Bob, Cy, Dee, Eli. Answer in JSON: {"target": "<name>"}.
+As the guard, choose a player to protect tonight from these players: Bob, Cy, Dee, Eli. Answer in JSON: {"reason": "<why, one short sentence>", "target": "<name>"}.
 
 ======================================================================
 ### seer
@@ -39,7 +39,7 @@ Recent events: ['Hal was killed.']
 Recent discussion:
 [Bob] hello
 
-As the seer, choose a player whose identity you want to reveal from these players: Bob, Cy, Dee, Eli. Answer in JSON: {"target": "<name>"}.
+As the seer, choose a player whose identity you want to reveal from these players: Bob, Cy, Dee, Eli. Answer in JSON: {"reason": "<why, one short sentence>", "target": "<name>"}.
 
 ======================================================================
 ### werewolf
@@ -61,4 +61,4 @@ Recent events: ['Hal was killed.']
 Recent discussion:
 [Bob] hello
 
-As a werewolf, choose one villager to eliminate tonight from these players: Bob, Cy, Dee, Eli. You cannot target other werewolves. Answer in JSON: {"target": "<name>"}.
+As a werewolf, choose one villager to eliminate tonight from these players: Bob, Cy, Dee, Eli. You cannot target other werewolves. Answer in JSON: {"reason": "<why, one short sentence>", "target": "<name>"}.

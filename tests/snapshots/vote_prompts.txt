@@ -19,7 +19,8 @@ Conversation:
 
 Candidates: Bob, Cy, Dee, Eli
 
-Pick the player you find most suspicious, the way your personality would. Answer in JSON: {"target": "<name>"}.
+Pick the player you find most suspicious, the way your personality would, and say why him and not the runner-up.
+Answer in JSON: {"reason": "<why this player, one or two sentences>", "target": "<name>", "not_chosen": {"player": "<the runner-up>", "why_not": "<why not him>"}}.
 
 ======================================================================
 ### hunter
@@ -43,7 +44,8 @@ Conversation:
 
 Candidates: Bob, Cy, Dee, Eli
 
-Pick the player you find most suspicious, the way your personality would. Answer in JSON: {"target": "<name>"}.
+Pick the player you find most suspicious, the way your personality would, and say why him and not the runner-up.
+Answer in JSON: {"reason": "<why this player, one or two sentences>", "target": "<name>", "not_chosen": {"player": "<the runner-up>", "why_not": "<why not him>"}}.
 
 ======================================================================
 ### seer
@@ -67,7 +69,8 @@ Conversation:
 
 Candidates: Bob, Cy, Dee, Eli
 
-Pick the player you find most suspicious, the way your personality would. Answer in JSON: {"target": "<name>"}.
+Pick the player you find most suspicious, the way your personality would, and say why him and not the runner-up.
+Answer in JSON: {"reason": "<why this player, one or two sentences>", "target": "<name>", "not_chosen": {"player": "<the runner-up>", "why_not": "<why not him>"}}.
 
 ======================================================================
 ### villager
@@ -91,7 +94,8 @@ Conversation:
 
 Candidates: Bob, Cy, Dee, Eli
 
-Pick the player you find most suspicious, the way your personality would. Answer in JSON: {"target": "<name>"}.
+Pick the player you find most suspicious, the way your personality would, and say why him and not the runner-up.
+Answer in JSON: {"reason": "<why this player, one or two sentences>", "target": "<name>", "not_chosen": {"player": "<the runner-up>", "why_not": "<why not him>"}}.
 
 ======================================================================
 ### werewolf
@@ -115,7 +119,8 @@ Conversation:
 
 Candidates: Bob, Cy, Dee, Eli
 
-Pick the player you find most suspicious, the way your personality would. Answer in JSON: {"target": "<name>"}.
+Pick the player you find most suspicious, the way your personality would, and say why him and not the runner-up.
+Answer in JSON: {"reason": "<why this player, one or two sentences>", "target": "<name>", "not_chosen": {"player": "<the runner-up>", "why_not": "<why not him>"}}.
 
 ======================================================================
 ### witch
@@ -139,4 +144,5 @@ Conversation:
 
 Candidates: Bob, Cy, Dee, Eli
 
-Pick the player you find most suspicious, the way your personality would. Answer in JSON: {"target": "<name>"}.
+Pick the player you find most suspicious, the way your personality would, and say why him and not the runner-up.
+Answer in JSON: {"reason": "<why this player, one or two sentences>", "target": "<name>", "not_chosen": {"player": "<the runner-up>", "why_not": "<why not him>"}}.

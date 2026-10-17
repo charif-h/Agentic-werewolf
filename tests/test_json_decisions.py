@@ -26,14 +26,16 @@ STATE = {'phase': 'night', 'day_number': 1, 'players': [], 'valid_targets': NAME
 def test_target_schema_restricts_the_answer_to_valid_names():
     schema = schemas.target_schema(NAMES)
     assert schema["properties"]["target"]["enum"] == NAMES
-    assert schema["required"] == ["target"]
+    assert list(schema["properties"]) == ["reason", "target"]      # the reason comes first
+    assert schema["required"] == ["reason", "target"]
     assert "enum" not in schemas.target_schema([])["properties"]["target"]
 
 
 def test_witch_schema_allows_none():
     schema = schemas.witch_schema(["Bob"])
     assert schema["properties"]["poison"]["enum"] == ["Bob", "none"]
-    assert set(schema["required"]) == {"save", "poison"}
+    assert list(schema["properties"])[0] == "reason"
+    assert set(schema["required"]) == {"reason", "save", "poison"}
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -71,12 +73,15 @@ def test_parse_witch():
 # --- the fake client wraps plain answers so scripted tests stay short ----------------------------
 
 def test_fake_wraps_plain_text_for_each_schema():
-    assert json.loads(fit_to_schema("Bob.", schemas.target_schema(NAMES))) == {"target": "Bob"}
-    assert json.loads(fit_to_schema("Hello", schemas.discussion_schema())) == {"speak": True, "message": "Hello"}
-    assert json.loads(fit_to_schema("No comment.", schemas.discussion_schema())) == {"speak": False, "message": ""}
+    assert json.loads(fit_to_schema("Bob.", schemas.target_schema(NAMES))) == {"reason": "My reason.", "target": "Bob"}
+    assert json.loads(fit_to_schema("Hello", schemas.discussion_schema())) == {
+        "reason": "My reason.", "speak": True, "message": "Hello"}
+    assert json.loads(fit_to_schema("No comment.", schemas.discussion_schema())) == {
+        "reason": "My reason.", "speak": False, "message": ""}
     witch = schemas.witch_schema(NAMES)
-    assert json.loads(fit_to_schema("SAVE and POISON Cy", witch)) == {"save": True, "poison": "Cy"}
-    assert json.loads(fit_to_schema("PASS", witch)) == {"save": False, "poison": "none"}
+    assert json.loads(fit_to_schema("SAVE and POISON Cy", witch)) == {
+        "reason": "My reason.", "save": True, "poison": "Cy"}
+    assert json.loads(fit_to_schema("PASS", witch)) == {"reason": "My reason.", "save": False, "poison": "none"}
 
 
 def test_fake_leaves_real_json_alone_and_can_return_raw_text():
@@ -93,7 +98,8 @@ def test_vote_requests_a_schema_listing_the_other_players():
     assert agent.vote("talk", ["Ann", "Bob", "Cy"]) == "Cy"
     options = agent.llm.calls[0][1]
     assert options["json_schema"]["properties"]["target"]["enum"] == ["Bob", "Cy"]     # not "Ann"
-    assert options["max_tokens"] == 60
+    assert options["max_tokens"] == 160
+    assert "not_chosen" in options["json_schema"]["properties"]            # the vote names the runner-up
 
 
 def test_vote_falls_back_to_a_random_valid_candidate_when_the_answer_is_not_valid_json():
@@ -123,7 +129,7 @@ def test_night_action_asks_with_the_valid_targets_as_enum():
     agent = make_agent(Role.WEREWOLF, "Bob")
     agent.night_action(STATE)
     assert agent.llm.calls[0][1]["json_schema"]["properties"]["target"]["enum"] == NAMES
-    assert 'Answer in JSON: {"target": "<name>"}.' in agent.llm.last_messages[-1].content
+    assert 'Answer in JSON: {"reason": "<why, one short sentence>", "target": "<name>"}.' in agent.llm.last_messages[-1].content
 
 
 def test_hunter_shot():
@@ -163,8 +169,8 @@ def test_discussion_requests_the_discussion_schema():
     agent = make_agent(Role.VILLAGER, "Hi there")
     agent.discuss("", ["Ann", "Bob"])
     options = agent.llm.calls[0][1]
-    assert set(options["json_schema"]["properties"]) == {"speak", "message"}
-    assert options["max_tokens"] == 160
+    assert set(options["json_schema"]["properties"]) == {"reason", "speak", "message"}
+    assert options["max_tokens"] == 200
 
 
 # --- the typographic-quote failure found by scripts/simulate.py -------------------------------------

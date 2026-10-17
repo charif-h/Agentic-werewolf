@@ -15,11 +15,15 @@ from typing import List, Optional
 NO_COMMENT = "no comment"
 
 DISCUSSION_ANSWER_FORMAT = (
-    'Answer in JSON: {"speak": true, "message": "<what you say out loud, one or two short sentences>"}. '
-    'If you really have nothing to add, answer {"speak": false, "message": ""}. '
+    'Answer in JSON: {"reason": "<why you say this, private: nobody hears it>", "speak": true, '
+    '"message": "<what you say out loud, one or two short sentences>"}. '
+    'If you really have nothing to add, answer {"reason": "<why>", "speak": false, "message": ""}. '
     "Write the JSON with plain straight quotes and apostrophes, never curly ones.")
-TARGET_ANSWER_FORMAT = 'Answer in JSON: {"target": "<name>"}.'
-WITCH_ANSWER_FORMAT = ('Answer in JSON: {"save": true or false, "poison": "<name>" or "none"}. '
+TARGET_ANSWER_FORMAT = 'Answer in JSON: {"reason": "<why, one short sentence>", "target": "<name>"}.'
+VOTE_ANSWER_FORMAT = ('Answer in JSON: {"reason": "<why this player, one or two sentences>", "target": "<name>", '
+                      '"not_chosen": {"player": "<the runner-up>", "why_not": "<why not him>"}}.')
+WITCH_ANSWER_FORMAT = ('Answer in JSON: {"reason": "<why, one short sentence>", "save": true or false, '
+                       '"poison": "<name>" or "none"}. '
                        'Use true / a name only for a potion you still have.')
 
 DIARY_ANSWER_FORMAT = (
@@ -166,7 +170,8 @@ Conversation:
 
 Candidates: {', '.join(candidates)}
 
-Pick the player you find most suspicious, the way your personality would. {TARGET_ANSWER_FORMAT}"""
+Pick the player you find most suspicious, the way your personality would, and say why him and not the runner-up.
+{VOTE_ANSWER_FORMAT}"""
 
 
 def wolf_chat_prompt(name: str, mates: List[str], targets: List[str], talk: List[str],
@@ -268,4 +273,6 @@ def refers_to_earlier_talk(text: str) -> bool:
 BACKREFERENCE_REMINDER = ("\n\n(Nobody has spoken yet today. Do not refer to earlier talk. "
                           "Say it again as the first thing said.)")
 
-LEAK_REMINDER ="\n\n(Do not state your own role. Say it again without revealing it.)"
+LEAK_REMINDER = "\n\n(Do not state your own role. Say it again without revealing it.)"
+
+REASON_REMINDER = "\n\n(Answer again in JSON and fill in the reason: say why, in one short sentence.)"

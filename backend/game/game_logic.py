@@ -417,7 +417,8 @@ class WerewolfGame:
                     agent = self.player_agents[player.id]
 
                     # Give each player the updated conversation to consider responding
-                    comment = agent.discuss(current_conversation, alive_names, self._scene(len(discussion.messages)))
+                    comment = agent.discuss(current_conversation, alive_names, self._scene(len(discussion.messages)),
+                                          f"Day {self.state.day_number}")
 
                     # Filter out "no comment" responses
                     spoken = bool(comment and comment.strip() and comment.strip().lower() != "no comment")
@@ -502,7 +503,8 @@ class WerewolfGame:
         for player in shuffled_voters:
             reason = None
             try:
-                vote_target = self.player_agents[player.id].vote(full_conversation, candidate_names, scene)
+                vote_target = self.player_agents[player.id].vote(full_conversation, candidate_names, scene,
+                                                                  f"Day {self.state.day_number}")
                 target = rules.find_player_by_name(self.state, vote_target)
                 if target and target.name in candidate_names and target.name != player.name:
                     votes[player.name] = target.name

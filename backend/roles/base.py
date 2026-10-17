@@ -61,7 +61,7 @@ class RoleHandler:
         """Prompt asking the player for a night target"""
         targets = f" from these players: {', '.join(valid_targets)}." if valid_targets else "."
         return (f"{self.night_instruction}{targets}{self.night_constraint} "
-                'Answer in JSON: {"target": "<name>"}.')
+                'Answer in JSON: {"reason": "<why, one short sentence>", "target": "<name>"}.')
 
 
 def alive_names(state: GameState, exclude: Optional[str] = None) -> List[str]:

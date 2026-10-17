@@ -52,15 +52,16 @@ def test_discussion_prompt_asks_for_speech_not_for_permission():
     assert "Open the discussion yourself" in d and "Secret: you are a seer. STRATEGY" in d and "FACTORS" in d
     assert "Good replies look like this" in d and d.count('- "') == 3          # few-shot examples
     assert d.rstrip().endswith("never curly ones.")
-    assert 'answer {"speak": false, "message": ""}.' in d
-    assert 'Answer in JSON: {"speak": true, "message":' in d
+    assert '{"reason": "<why>", "speak": false, "message": ""}.' in d
+    assert 'Answer in JSON: {"reason": "<why you say this, private: nobody hears it>", "speak": true,' in d
     assert "Do you want to" not in d       # a yes/no question made small models answer "Yes, please."
 
 
 def test_vote_prompt_ends_with_the_instruction():
     v = prompts.vote_prompt("Ann", "werewolf", "VOTING", "talk", ["Bob", "Cy"])
     assert "Candidates: Bob, Cy" in v and "Secret: you are a werewolf. VOTING" in v
-    assert v.rstrip().endswith('Answer in JSON: {"target": "<name>"}.')
+    assert v.rstrip().endswith('"not_chosen": {"player": "<the runner-up>", "why_not": "<why not him>"}}.')
+    assert 'Answer in JSON: {"reason":' in v and '"target": "<name>"' in v
     assert "Nobody spoke." in prompts.vote_prompt("Ann", "x", "y", " ", ["Bob"])
 
 
