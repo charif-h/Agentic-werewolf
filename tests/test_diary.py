@@ -277,3 +277,26 @@ def test_only_the_latest_entries_are_shown_newest_first(monkeypatch):
                         lambda: type("S", (), {"diary_prompt_entries": 2, "diary_token_budget": 300})())
     lines = agent._knowledge_with_notes()
     assert lines == ["Your private diary, newest entry first:", "Day 4: thought 4", "Day 3: thought 3"]
+
+
+# --- live diary events -----------------------------------------------------------------
+
+def test_new_entries_are_sent_live_in_spectator_mode_only(monkeypatch):
+    game = new_game()
+    events = []
+    game.on_event = lambda kind, data: events.append((kind, data))
+    agent = next(iter(game.player_agents.values()))
+    monkeypatch.setattr("backend.game.game_logic.get_settings", lambda: type("S", (), {"reveal_roles": False})())
+    agent._add_entry("Day 1", "reaction", "A note.")
+    assert events == []                                                   # a diary is secret
+    monkeypatch.setattr("backend.game.game_logic.get_settings", lambda: type("S", (), {"reveal_roles": True})())
+    agent._add_entry("Day 1", "reaction", "Another note.")
+    kind, data = events[0]
+    assert kind == "diary_entry" and data["player_id"] == agent.profile.id and data["player"] == agent.profile.name
+    assert data["entry"]["text"] == "Another note." and data["entry"]["kind"] == "reaction"
+
+
+def test_a_failing_listener_does_not_break_the_diary():
+    agent = make_agent("x")
+    agent.on_entry = lambda entry: (_ for _ in ()).throw(RuntimeError("boom"))
+    assert agent._add_entry("Day 1", "reaction", "A note.")["id"] == 1

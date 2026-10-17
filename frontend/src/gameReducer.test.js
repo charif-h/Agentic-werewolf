@@ -68,3 +68,24 @@ describe('gameReducer', () => {
     expect(gameReducer(ended, { type: 'loaded', game }).winner).toBeNull();
   });
 });
+
+describe('live diary entries', () => {
+  const entry = (id, text = 'I felt accused.') => ({ id, step: 'Day 1', kind: 'reaction', text, data: {} });
+  const event = (e, player = 'p1') => ({ type: 'event', event: { type: 'diary_entry', data: { player_id: player, player: 'Ann', entry: e } } });
+
+  it('keeps the entries of each player as they arrive', () => {
+    const s = run([event(entry(1)), event(entry(2)), event(entry(1), 'p2')]);
+    expect(s.diaries.p1.map((e) => e.id)).toEqual([1, 2]);
+    expect(s.diaries.p2.map((e) => e.id)).toEqual([1]);
+  });
+
+  it('ignores an entry that arrives twice', () => {
+    const s = run([event(entry(1)), event(entry(1))]);
+    expect(s.diaries.p1).toHaveLength(1);
+  });
+
+  it('forgets the diaries of the previous game', () => {
+    const s = run([event(entry(1)), { type: 'created', gameId: 'g2' }]);
+    expect(s.diaries).toEqual({});
+  });
+});

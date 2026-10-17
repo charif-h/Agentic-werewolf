@@ -8,7 +8,7 @@ valid names and the code never has to guess what a sentence meant.
 import logging
 import random
 import re
-from typing import Optional, Dict, Any, List
+from typing import Callable, Optional, Dict, Any, List
 from backend.models.game_models import PlayerProfile
 from backend.llm import ASSISTANT, SYSTEM, USER, LLMClient, Message, fit_text
 from backend.llm.tokens import OMISSION_NOTICE, fit_lines
@@ -44,6 +44,7 @@ class PlayerAgent:
         self.llm = llm
         self.memory: List[Message] = []  # Store conversation history
         self.knowledge: List[str] = []  # Secret facts learned during the game
+        self.on_entry: Optional[Callable[[Dict[str, Any]], None]] = None   # called with every new diary entry
         self.vote_plan: Optional[Dict[str, Any]] = None   # whom the player planned to vote against today
         self.mates: List[str] = []   # the other werewolves, for a werewolf (set by `set_pack`)
         self._speech_reason = ""   # private reason of the latest discussion answer
@@ -257,6 +258,11 @@ class PlayerAgent:
         """Append a typed entry to the diary"""
         entry = make_entry(len(self.diary) + 1, step, kind, text, data)
         self.diary.append(entry)
+        if self.on_entry is not None:
+            try:
+                self.on_entry(entry)
+            except Exception as e:      # a listener must never break the game
+                logger.warning("Diary listener failed: %s", e)
         return entry
 
     def write_role_card(self) -> Dict[str, Any]:

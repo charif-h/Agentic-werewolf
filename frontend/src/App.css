@@ -320,6 +320,14 @@ button.danger:hover {
 .diary-summary { font-style: italic; }
 .diary-entry ul { padding-left: 20px; }
 .diary-entry li { margin-bottom: 6px; }
+.diary-entry.kind-role_card, .diary-entry.kind-pack { border-left: 3px solid #4a90e2; padding-left: 8px; }
+.diary-entry.kind-decision { border-left: 3px solid #e6b800; padding-left: 8px; }
+.diary-entry.kind-plan { border-left: 3px solid #5cb85c; padding-left: 8px; }
+.diary-entry.kind-reaction { border-left: 3px solid #b07cd8; padding-left: 8px; }
+.diary-entry.sacrifice { border-left-color: #ff6b6b; background: rgba(255, 107, 107, 0.08); }
+.diary-tag { display: inline-block; margin: 2px 0; padding: 1px 8px; border-radius: 10px; font-size: 0.85em; background: rgba(255, 255, 255, 0.1); }
+.diary-tag.sacrifice { background: #ff6b6b; color: #1a1a1a; font-weight: bold; }
+.diary-whynot { margin: 2px 0; color: #b8b8b8; }
 .guess.werewolf { color: #ff6b6b; }
 .guess.villager { color: #4ecdc4; }
 .guess.unsure { color: #b8b8b8; }

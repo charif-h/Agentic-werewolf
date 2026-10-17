@@ -76,7 +76,9 @@ class WerewolfGame:
         rules.assign_roles(players)
 
         for player in players:
-            self.player_agents[player.id] = PlayerAgent(player, self.llm)
+            agent = PlayerAgent(player, self.llm)
+            agent.on_entry = lambda entry, p=player: self._emit_diary_entry(p, entry)
+            self.player_agents[player.id] = agent
 
         self._run_psytests()
 
@@ -100,6 +102,12 @@ class WerewolfGame:
         self.state.game_log.append(f"[GAME MASTER] {opening}")
 
         return self.state
+
+    def _emit_diary_entry(self, player: PlayerProfile, entry: Dict) -> None:
+        """Tell the clients about a new diary entry. A diary is secret, so only in spectator mode
+        (REVEAL_ROLES); otherwise clients read it through the API once it is public."""
+        if get_settings().reveal_roles:
+            self._emit("diary_entry", {"player_id": player.id, "player": player.name, "entry": entry})
 
     def _run_psytests(self) -> None:
         """

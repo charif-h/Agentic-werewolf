@@ -160,6 +160,7 @@ function App() {
           gameId={state.gameId}
           player={diaryPlayer}
           version={`${state.phase}-${state.day}`}
+          liveEntries={state.diaries[diaryPlayer.id]}
           onClose={() => setDiaryPlayerId(null)}
         />
       )}

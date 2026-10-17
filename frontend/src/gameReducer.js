@@ -11,6 +11,7 @@ export const initialState = {
   speaking: null, // name of the last player who spoke (live indicator)
   winner: null,
   llm: null, // model usage of this game (calls, tokens, time)
+  diaries: {}, // player id -> diary entries that arrived live (spectator mode)
   rolesRevealed: false, // the server sends everybody's role (REVEAL_ROLES), so spectating is possible
   error: null,
 };
@@ -62,6 +63,12 @@ export function gameReducer(state, action) {
           return { ...state, log: [...state.log, line], speaking: event.data.sender };
         case 'vote_cast':
           return { ...state, log: [...state.log, line] };
+        case 'diary_entry': {
+          const { player_id: id, entry } = event.data;
+          const known = state.diaries[id] || [];
+          if (known.some((e) => e.id === entry.id)) return state; // an event can arrive twice
+          return { ...state, diaries: { ...state.diaries, [id]: [...known, entry] } };
+        }
         case 'phase_change':
           // Whatever the result says, the page reloads the real state right after
           return { ...state, busy: false, speaking: null };
