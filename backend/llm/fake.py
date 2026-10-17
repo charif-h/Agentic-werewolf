@@ -39,7 +39,11 @@ def fit_to_schema(text: str, json_schema: Dict[str, Any]) -> str:
         answer = {"speak": not silent, "message": "" if silent else reply}
         return json.dumps({"reason": "My reason.", **answer} if "reason" in properties else answer)
     if "opinions" in properties:
-        names = properties["opinions"]["items"]["properties"]["player"]["enum"]
+        item = properties["opinions"]["items"]["properties"]
+        names = item["player"]["enum"]
+        if "plan" in item:
+            return json.dumps({"summary": reply or "Nothing clear yet.", "opinions": [
+                {"player": name, "plan": "ignore", "reason": "Not dangerous for now."} for name in names]})
         return json.dumps({"summary": reply or "Nothing clear yet.", "opinions": [
             {"player": name, "guess": "unsure", "confidence": "low", "reason": "Not enough to go on."}
             for name in names]})

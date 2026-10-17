@@ -20,6 +20,17 @@ DISCUSSION_ANSWER_FORMAT = (
     'If you really have nothing to add, answer {"reason": "<why>", "speak": false, "message": ""}. '
     "Write the JSON with plain straight quotes and apostrophes, never curly ones.")
 TARGET_ANSWER_FORMAT = 'Answer in JSON: {"reason": "<why, one short sentence>", "target": "<name>"}.'
+WOLF_DIARY_ANSWER_FORMAT = (
+    '{"summary": "<two sentences on how you feel about this step>", "opinions": [{"player": "<name>", '
+    '"reason": "<one short sentence>", "plan": "frame" or "ignore" or "ally"}]}. Straight quotes only.')
+
+WOLF_VOTE_FORMAT = ('Answer in JSON: {"reason": "<why this player, one or two sentences>", "target": "<name>", '
+                    '"not_chosen": {"player": "<the runner-up>", "why_not": "<why not him>"}, '
+                    '"sacrifice_mate": false}.')
+
+WOLF_VOTE_GOAL = ("Your goal today: deceive the village. Get a VILLAGER eliminated, never one of your pack, "
+                  "and do not look like you protect them. Argue like an honest villager would.")
+
 VOTE_ANSWER_FORMAT = ('Answer in JSON: {"reason": "<why this player, one or two sentences>", "target": "<name>", '
                       '"not_chosen": {"player": "<the runner-up>", "why_not": "<why not him>"}}.')
 WITCH_ANSWER_FORMAT = ('Answer in JSON: {"reason": "<why, one short sentence>", "save": true or false, '
@@ -55,7 +66,9 @@ def diary_notes(entry: Optional[dict]) -> List[str]:
     if not entry:
         return []
     words = {"werewolf": "you suspect", "villager": "you trust", "unsure": "you are unsure about"}
-    return [f"{entry['step']}, {words[o['guess']]} {o['player']} ({o['confidence']} confidence): {o['reason']}"
+    plans = {"frame": "you plan to frame", "ignore": "you plan to leave alone", "ally": "you use as an ally"}
+    return [f"{entry['step']}, {plans[o['plan']]} {o['player']}: {o['reason']}" if "plan" in o else
+            f"{entry['step']}, {words[o['guess']]} {o['player']} ({o['confidence']} confidence): {o['reason']}"
             for o in entry["opinions"]]
 
 
@@ -159,8 +172,24 @@ Good replies look like this:
 
 
 def vote_prompt(name: str, role: str, voting_strategy: str, conversation: str,
-                candidates: List[str], knowledge: Optional[List[str]] = None, scene: str = "") -> str:
-    """Ask a player who to vote for"""
+                candidates: List[str], knowledge: Optional[List[str]] = None, scene: str = "",
+                mates: Optional[List[str]] = None) -> str:
+    """Ask a player who to vote for (`mates`: the werewolves of the pack of a werewolf, who is not asked to guess them)"""
+    if mates:
+        return f"""{scene}You are {name}, voting to eliminate someone.
+
+Secret: you are a {role}. {voting_strategy}
+Your pack, all werewolves, you know it for sure: {', '.join(mates)}.
+{knowledge_block(knowledge)}
+Conversation:
+{conversation if conversation.strip() else "Nobody spoke."}
+
+Candidates: {', '.join(c for c in candidates if c not in mates)}
+
+{WOLF_VOTE_GOAL}
+Voting against a pack member is a rare and costly move (the pack loses a member): do it only to look innocent, set "sacrifice_mate" to true and explain it in the reason. Otherwise "sacrifice_mate" is false.
+Say why this player and not the runner-up, the way your personality would.
+{WOLF_VOTE_FORMAT}"""
     return f"""{scene}You are {name}, voting to eliminate someone.
 
 Secret: you are a {role}. {voting_strategy}
@@ -216,10 +245,24 @@ def hunter_prompt(instruction: str, targets: List[str]) -> str:
 
 def diary_prompt(name: str, role: str, personality_summary: str, step: str, events: str,
                  others: List[str], previous: Optional[str] = None,
-                 knowledge: Optional[List[str]] = None, vote: Optional[str] = None) -> str:
-    """Ask a player to write their private diary entry for the step that just ended"""
-    voted = f"\nYou voted to eliminate {vote}, so you suspect {vote}.\n" if vote else ""
+                 knowledge: Optional[List[str]] = None, vote: Optional[str] = None,
+                 mates: Optional[List[str]] = None) -> str:
+    """Ask a player to write their private diary entry for the step that just ended
+    (`mates`: the pack of a werewolf, stated as certain and not asked about)"""
     before = f"\nYour last diary entry said: {previous}\n" if previous else ""
+    if mates:
+        voted = f"\nYou voted to eliminate {vote}: it was a move for the pack, not a belief.\n" if vote else ""
+        return f"""You are {name}, writing your private diary. Nobody else reads it, so be honest about what you plan.
+Secret: you are a werewolf. Your pack, all werewolves, you know it for sure: {', '.join(mates)}. Do not wonder about them.
+Your personality (Big Five): {personality_summary}. Write the way you think.
+{knowledge_block(knowledge)}{before}{voted}
+What happened during {step}:
+{events if events.strip() else "Nothing notable."}
+
+Write what you think of {step}, then give your plan for EACH of these players: {', '.join(others)}.
+For each one give a short reason, then the plan: "frame" = push the village to eliminate them, "ignore" = they are no danger to the pack, "ally" = a villager who is useful to you for now.
+Answer in JSON: {WOLF_DIARY_ANSWER_FORMAT}"""
+    voted = f"\nYou voted to eliminate {vote}, so you suspect {vote}.\n" if vote else ""
     return f"""You are {name}, writing your private diary. Nobody else reads it, so be honest about what you think.
 Secret: you are a {role}. Your personality (Big Five): {personality_summary}. Write the way you think.
 {knowledge_block(knowledge)}{before}{voted}
@@ -274,5 +317,8 @@ BACKREFERENCE_REMINDER = ("\n\n(Nobody has spoken yet today. Do not refer to ear
                           "Say it again as the first thing said.)")
 
 LEAK_REMINDER = "\n\n(Do not state your own role. Say it again without revealing it.)"
+
+MATE_VOTE_REMINDER = ("\n\n(You voted against a member of your pack. Do not, unless it is a deliberate sacrifice: "
+                      'then set "sacrifice_mate" to true and explain it in the reason. Choose again.)')
 
 REASON_REMINDER = "\n\n(Answer again in JSON and fill in the reason: say why, in one short sentence.)"

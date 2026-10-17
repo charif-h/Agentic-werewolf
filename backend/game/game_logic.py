@@ -89,12 +89,8 @@ class WerewolfGame:
         wolves = [p for p in players if get_handler(p.role).team == WEREWOLVES]
         for wolf in wolves:
             mates = [p.name for p in wolves if p.id != wolf.id]
-            if not mates:
-                continue
-            if diary:
-                self.player_agents[wolf.id].write_pack(mates)
-            else:
-                self.player_agents[wolf.id].add_knowledge(f"The other werewolves are: {', '.join(mates)}.")
+            if mates:
+                self.player_agents[wolf.id].set_pack(mates)
 
         self.state.players = players
         self.state.phase = GamePhase.SETUP

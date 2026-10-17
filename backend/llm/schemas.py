@@ -53,23 +53,37 @@ def discussion_schema() -> Dict[str, Any]:
 
 GUESSES = ["werewolf", "villager", "unsure"]
 CONFIDENCES = ["low", "medium", "high"]
+PLANS = ["frame", "ignore", "ally"]       # what a werewolf plans for a player who is not in its pack
 
 
-def diary_schema(names: Iterable[str]) -> Dict[str, Any]:
+def diary_schema(names: Iterable[str], wolf: bool = False) -> Dict[str, Any]:
     """
     `{"summary": str, "opinions": [{"player", "guess", "confidence", "reason"}]}`:
-    what the player thinks of this step, and of each other player
+    what the player thinks of this step, and of each other player. A werewolf knows who is a
+    werewolf, so for it (`wolf`) `names` are the players outside the pack and each opinion is a
+    `plan` ("frame", "ignore" or "ally") instead of a guess.
     """
-    opinion = {
-        "type": "object",
-        "properties": {
-            "player": {"type": "string", "enum": list(names)},
-            "reason": {"type": "string"},      # before the label: the model reasons, then concludes
-            "guess": {"type": "string", "enum": GUESSES},
-            "confidence": {"type": "string", "enum": CONFIDENCES},
-        },
-        "required": ["player", "reason", "guess", "confidence"],
-    }
+    if wolf:
+        opinion = {
+            "type": "object",
+            "properties": {
+                "player": {"type": "string", "enum": list(names)},
+                "reason": {"type": "string"},
+                "plan": {"type": "string", "enum": PLANS},
+            },
+            "required": ["player", "reason", "plan"],
+        }
+    else:
+        opinion = {
+            "type": "object",
+            "properties": {
+                "player": {"type": "string", "enum": list(names)},
+                "reason": {"type": "string"},      # before the label: the model reasons, then concludes
+                "guess": {"type": "string", "enum": GUESSES},
+                "confidence": {"type": "string", "enum": CONFIDENCES},
+            },
+            "required": ["player", "reason", "guess", "confidence"],
+        }
     return {
         "type": "object",
         "properties": {"summary": {"type": "string"},
@@ -202,10 +216,11 @@ def parse_witch(text: Optional[str], poison_targets: Iterable[str]) -> Optional[
     return data["save"], None
 
 
-def parse_diary(text: Optional[str], names: Iterable[str]) -> Optional[Dict[str, Any]]:
+def parse_diary(text: Optional[str], names: Iterable[str], wolf: bool = False) -> Optional[Dict[str, Any]]:
     """
     A clean diary entry `{"summary", "opinions"}` from a diary answer, or None if it is not valid.
     Opinions about unknown players are dropped, and a player appears once (the first opinion wins).
+    For a werewolf (`wolf`) an opinion is `{"player", "plan", "reason"}`.
     """
     data = parse_json(text)
     if not data or not isinstance(data.get("summary"), str) or not isinstance(data.get("opinions"), list):
@@ -217,6 +232,12 @@ def parse_diary(text: Optional[str], names: Iterable[str]) -> Optional[Dict[str,
             continue
         name = valid.get(item["player"].strip().lower())
         guess, confidence, reason = item.get("guess"), item.get("confidence"), item.get("reason")
+        if wolf:
+            if name is None or name in seen or item.get("plan") not in PLANS or not isinstance(reason, str):
+                continue
+            seen.add(name)
+            opinions.append({"player": name, "plan": item["plan"], "reason": reason.strip()})
+            continue
         if (name is None or name in seen or guess not in GUESSES or confidence not in CONFIDENCES
                 or not isinstance(reason, str)):
             continue

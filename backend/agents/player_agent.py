@@ -44,6 +44,7 @@ class PlayerAgent:
         self.llm = llm
         self.memory: List[Message] = []  # Store conversation history
         self.knowledge: List[str] = []  # Secret facts learned during the game
+        self.mates: List[str] = []   # the other werewolves, for a werewolf (set by `set_pack`)
         self._speech_reason = ""   # private reason of the latest discussion answer
         self.last_vote: Optional[str] = None   # whom this player voted for most recently
         self.diary: List[Dict[str, Any]] = []  # Typed entries (see `backend.models.diary`): role card, pack, one summary per night and day
@@ -262,8 +263,18 @@ class PlayerAgent:
         role = self.profile.role.value
         return self._add_entry("Role card", ROLE_CARD, f"I am a {role}.", {"role": role})
 
+    def set_pack(self, mates: List[str]) -> None:
+        """Learn who the other werewolves are: noted in the diary (a `pack` entry), or kept as a
+        secret fact when the diary is off. The list never comes from free text."""
+        if get_settings().diary_enabled:
+            self.write_pack(mates)
+        else:
+            self.mates = list(mates)
+            self.add_knowledge(f"The other werewolves are: {', '.join(mates)}.")
+
     def write_pack(self, mates: List[str]) -> Dict[str, Any]:
         """Note the other members of the pack (the werewolves) in the diary"""
+        self.mates = list(mates)
         return self._add_entry("Pack", PACK, f"My fellow werewolves are {', '.join(mates)}. I must hide it.", {"mates": mates})
 
     def add_knowledge(self, fact: str) -> None:
@@ -322,16 +333,22 @@ class PlayerAgent:
         if not others:
             return None
         profile = self.profile
+        mates = [name for name in others if name in self.mates]
+        if mates:                                  # a werewolf knows its pack: it only plans for the others
+            others = [name for name in others if name not in mates]
+            if not others:
+                return None
         last = self._last_summary()
         previous = last["text"] if last else None
         context = prompts.diary_prompt(
             profile.name, profile.role.value, profile.personality.summary(), step,
             self._fit_conversation(events), others, previous, self.knowledge,
-            self.last_vote if step.startswith("Day") else None,
+            self.last_vote if step.startswith("Day") else None, mates or None,
         )
         system_prompt = prompts.short_reply_system_prompt(profile.name, profile.personality.summary())
         entry = schemas.parse_diary(
-            self._ask(system_prompt, context, schemas.diary_schema(others), DIARY_TOKENS), others)
+            self._ask(system_prompt, context, schemas.diary_schema(others, wolf=bool(mates)), DIARY_TOKENS),
+            others, wolf=bool(mates))
         if entry is None:
             self._note_invalid_answer()
             return None
@@ -465,22 +482,39 @@ class PlayerAgent:
         if not other_players:
             return alive_players[0] if alive_players else ""
 
+        mates = [name for name in other_players if name in self.mates]
         context = prompts.vote_prompt(
             self.profile.name, self.profile.role.value, self.handler.voting_strategy,
             self._fit_conversation(conversation_history), other_players, self._knowledge_with_notes(), scene,
+            mates or None,
         )
         system_prompt = prompts.short_reply_system_prompt(
             self.profile.name, self.profile.personality.summary()
         )
-        decision = self._ask_decision(
-            system_prompt, context, schemas.target_schema(other_players, vote=True),
-            lambda raw: schemas.parse_decision(raw, other_players))
+        schema = schemas.target_schema(other_players, vote=True, sacrifice=bool(mates))
+        parse = lambda raw: schemas.parse_decision(raw, other_players)       # noqa: E731
+        decision = self._ask_decision(system_prompt, context, schema, parse)
+        tag = None
+        if decision is not None and mates and decision["target"] in mates:
+            if decision["sacrifice_mate"] and decision["reason"]:
+                tag = "intentional_sacrifice"          # a deliberate move, not a mistake
+                self._note_wolf_sacrifice()
+            else:                                      # a mistake: ask once more, then choose among the others
+                self._note_wolf_voted_mate()
+                decision = self._ask_decision(system_prompt, context + prompts.MATE_VOTE_REMINDER, schema, parse)
+                if decision is not None and decision["target"] in mates:
+                    if decision["sacrifice_mate"] and decision["reason"]:
+                        tag = "intentional_sacrifice"
+                        self._note_wolf_sacrifice()
+                    else:
+                        decision = None
         # No valid answer (model down, nonsense): a random candidate keeps votes independent
         if decision is None:
             self._note_invalid_answer()
         else:
-            self._record_decision(step, f"My vote: {decision['target']}", decision, "vote")
-        self.last_vote = decision["target"] if decision else random.choice(other_players)
+            self._record_decision(step, f"My vote: {decision['target']}", decision, "vote", tag)
+        fallback = [name for name in other_players if name not in mates] or other_players
+        self.last_vote = decision["target"] if decision else random.choice(fallback)
         return self.last_vote
 
     @staticmethod
@@ -489,6 +523,18 @@ class PlayerAgent:
         metrics = current_metrics()
         if metrics is not None:
             metrics.add_invalid_answer()
+
+    @staticmethod
+    def _note_wolf_voted_mate() -> None:
+        metrics = current_metrics()
+        if metrics is not None:
+            metrics.add_wolf_voted_mate_unintended()
+
+    @staticmethod
+    def _note_wolf_sacrifice() -> None:
+        metrics = current_metrics()
+        if metrics is not None:
+            metrics.add_wolf_sacrificed_mate()
 
     @staticmethod
     def _note_opening_backreference() -> None:
